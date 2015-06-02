@@ -13,7 +13,7 @@
 #include <cmath>
 using namespace std;
 
-string nameapp = "b5e0.5_";
+string nameapp = "b1e1_";
 double beta = 1;//0.2;//1;//5;
 double eta = 1; //0.2;//1;//5;
 const double DAcoupling = 0.1;
