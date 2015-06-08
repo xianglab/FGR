@@ -13,8 +13,8 @@
 #include <cmath>
 using namespace std;
 
-string nameapp = "b1e1_";
-double beta = 1;//0.2;//1;//5;
+string nameapp = "b5e0.5_";
+double beta = 0.1;//0.2;//1;//5;
 double eta = 1; //0.2;//1;//5;
 const double DAcoupling = 0.1;
 double s = 1; //Noneq. initial shift of parimary mode
@@ -25,13 +25,13 @@ double omega_DA_fix = 3; //fixed omega_DA, with scan tp
 //const double tp_max = 40; //scanning tp option, DeltaTau as step
 //const double Deltatp = 0.2;
 
-double Omega = 0.05; //primary mode freq
+double Omega = 0.55; //primary mode freq
 double y_0 = 1.0; //shift of primary mode
 
-const int n_omega = 200;
+const int n_omega = 100; //100;
 const double d_omega = 0.1;//0.1;//0.002;for gaussian//0.1; for ohmic
 //const double omega_max = 20;//1;//20;//2.5 for gaussian// 20 for ohmic
-const double d_omega_eff = 0.2; //for effective SD sampling rate
+const double d_omega_eff = 0.1; //for effective SD sampling rate
 const double omega_c = 1; //cutoff freq for ohmic
 
 const int LEN = 512;//512;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
@@ -128,10 +128,10 @@ int main (int argc, char *argv[]) {
     double a_parameter_eff(0);
 
     
-    /*
+    
     //calculating Er from integrating the effective SD
-    outfile.open("Er_eff.dat");
-    for (eta = 2; eta < 10; eta += 0.02)
+    outfile.open("Er_eff_eta.dat");
+    for (eta = 0; eta < 10; eta += 0.02)
     {//eta=0.0;
         
         //setting up spectral density
@@ -168,7 +168,7 @@ int main (int argc, char *argv[]) {
     }
     outfile.close();
     outfile.clear();
-     */
+    
     
 
     // ********** BEGIN of Normal mode analysis ***********
@@ -202,16 +202,21 @@ int main (int argc, char *argv[]) {
     
     double c_bath[n_omega];//secondary bath mode coupling coefficients
     double Diag_matrix[n_omega][n_omega];
+    for (i=0; i < dim; i++) {
+        for (j=0; j < dim; j++) {
+            Diag_matrix[i][j] = 0;
+        }
+    }
 
     
     // BEGIN loop - calculating Er from discrete normal modes with ohmic bath modes. scanning eta
     
     outfile1.open("Er_eta.dat");
-    for (eta = 1; eta <= 2 ; eta += 1)
+    //for (eta = 1; eta <= 1 ; eta += 1)
     {
-        //eta=1.0;
+        eta=1.0;
         cout << "eta = " << eta << endl;
-        cout << "c_bath[] = " << endl;
+        //cout << "c_bath[] = " << endl;
         //secondary bath mode min shift coefficients (for EXACT discrete normal mode analysis)
         Er_bath=0;
         for (w = 1; w < n_omega; w++) {
@@ -220,7 +225,7 @@ int main (int argc, char *argv[]) {
             //Gaussian SD:
             //c_bath[w] = sqrt( 2.0 / pi * S_omega_gaussian(w*d_omega, eta, sigma, omega_op) * d_omega * d_omega * w);
             Er_bath += 2.0 * c_bath[w] * c_bath[w] / (w*d_omega * w*d_omega);
-            cout << c_bath[w] << endl;
+            //cout << c_bath[w] << endl; //seems to be ok, proportional to sqrt(eta)
         }
         
         cout << "Er_bath = " << Er_bath << endl; //checked for eta linearality
@@ -233,6 +238,7 @@ int main (int argc, char *argv[]) {
             D_matrix[w][w] = pow(w*d_omega ,2);
         }
         
+        
         //cout << "Hession matrix D:" << endl;
         for (i=0; i < dim; i++) {
             for (j=0; j < dim; j++) {
@@ -241,6 +247,7 @@ int main (int argc, char *argv[]) {
             }
             //cout << endl;
         }
+        
         
         //diagonalize matrix, the eigenvectors transpose is in result matrix => TT_ns.
         dsyev_('V', 'L', col, matrix[0], col, eig_val, work, lwork, info); //diagonalize matrix
@@ -277,7 +284,7 @@ int main (int argc, char *argv[]) {
          for (j=0; j < dim; j++) cout << TT_ns[i][j] << "    " ;
          cout << endl;
          }
-         */
+        */
         
         // the coefficients of linear electronic coupling in normal modes (gamma[j]=TT_ns[j][0]*gamma_y), here gamma_y=1
         double gamma_nm[n_omega];
@@ -292,11 +299,15 @@ int main (int argc, char *argv[]) {
             for (a = 1; a < n_omega; a++) req_nm[i] -= TT_ns[i][a] * c_bath[a] / (a*d_omega * a*d_omega);
         }
         
+        //cout << "normal mode req_nm:" << endl;
         outfile.open("Huang-Rhys.dat");
         for (i = 0; i < n_omega; i++) {
             //tilde c_j coupling strength normal mode
             c_nm[i] = req_nm[i] * omega_nm[i] * omega_nm[i];
+            //cout << c_nm[i] << endl;
+            
             req_nm[i] *= 2.0 * y_0;
+            //cout << req_nm[i] << endl;
             //discrete Huang-Rhys factor as follows
             S_array[i] = omega_nm[i] * req_nm[i] * req_nm[i] * 0.5;
             outfile << S_array[i] << endl;
