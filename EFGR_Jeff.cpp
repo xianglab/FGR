@@ -28,10 +28,10 @@ double omega_DA_fix = 3; //fixed omega_DA, with scan tp
 double Omega = 0.55; //primary mode freq
 double y_0 = 1.0; //shift of primary mode
 
-const int n_omega = 100; //100;
+const int n_omega = 10000; //100;
 const double d_omega = 0.1;//0.1;//0.002;for gaussian//0.1; for ohmic
 //const double omega_max = 20;//1;//20;//2.5 for gaussian// 20 for ohmic
-const double d_omega_eff = 0.1; //for effective SD sampling rate
+const double d_omega_eff = 0.001; //for effective SD sampling rate
 const double omega_c = 1; //cutoff freq for ohmic
 
 const int LEN = 512;//512;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
@@ -136,8 +136,6 @@ int main (int argc, char *argv[]) {
         
         //setting up spectral density
         for (w = 1; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff(w*d_omega_eff, eta);
-        for (w = 1; w < n_omega; w++) SD[w] = S_omega_ohmic(w*d_omega, eta); //Ohmic spectral density
-        
         //outfile1.open("J_eff(omega).dat");
         //for (w = 1; w< n_omega; w++) outfile1 << J_eff[w] << endl;
         //outfile1.close();
@@ -169,7 +167,7 @@ int main (int argc, char *argv[]) {
     outfile.close();
     outfile.clear();
     
-    
+    /*
 
     // ********** BEGIN of Normal mode analysis ***********
     
@@ -266,7 +264,8 @@ int main (int argc, char *argv[]) {
         
         for (i=0; i < dim; i++)
             for (j=0; j < dim; j++) TT_ns[i][j] = matrix[i][j];
-        
+        */
+    
         /*
          cout << "diagonalized Hessian matrix: " << endl;
          for (i=0; i < dim; i++) {
@@ -285,7 +284,7 @@ int main (int argc, char *argv[]) {
          cout << endl;
          }
         */
-        
+        /*
         // the coefficients of linear electronic coupling in normal modes (gamma[j]=TT_ns[j][0]*gamma_y), here gamma_y=1
         double gamma_nm[n_omega];
         for (i=0; i<n_omega; i++) gamma_nm[i] = TT_ns[i][0];
@@ -332,6 +331,7 @@ int main (int argc, char *argv[]) {
     }
     outfile1.close();
     outfile1.clear();
+    */
     
     
     //-------------- Summary ----------------
