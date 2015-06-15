@@ -14,21 +14,21 @@
 #include <cmath>
 using namespace std;
 
-double beta = 1;//0.2;//1;//5;
-double eta = 1; //0.2;//1;//5;
+double beta = 1.0;//0.1, 0.5;//1;//5;
+double eta = 1.0; //0.5;//1;//5;
 const double DAcoupling = 0.1;
 double Omega = 1.0; //primary mode freq
 double y_0 = 1.0; //shift of primary mode
 
-const double omega_max = 15;//20;//2.5 for gaussian// 20 for ohmic //15 or 20 for Jeff
+const double omega_max = 15;//20;//15 or 20 for Jeff
 const int n_omega = 1000;//200;//10000; //100;
-const double d_omega = omega_max / n_omega;//0.1;//0.002;for gaussian//0.1; for ohmic
-const double d_omega_eff = omega_max / n_omega;//0.05;//0.001; //for effective SD sampling rate
+const double d_omega = omega_max / n_omega;//0.1;
+const double d_omega_eff = omega_max / n_omega;//0.05; //for effective SD sampling rate
 const double omega_c = 1; //cutoff freq for ohmic
 
-const int LEN = 512;//512;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
-const double DeltaT=0.2;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
-const double T0= -DeltaT*(LEN*0.5);//-DeltaT*LEN/2+DeltaT/2;
+const int LEN = 1024;//512; //number of t choices
+const double DeltaT = 0.3;//0.2; //FFT time sampling interval
+const double T0= -DeltaT*(LEN*0.5);
 const double hbar = 1;
 const double pi=3.14159265358979324;
 const double RT_2PI= sqrt(2*pi);
@@ -340,6 +340,8 @@ int main (int argc, char *argv[]) {
     outfile.clear();
     
     
+    cout << " df = " << df << endl;
+    cout << " d omega_{DA} = " << dE << endl;
     
     
     
@@ -347,8 +349,7 @@ int main (int argc, char *argv[]) {
     
     
     
-    
-    
+    /*
     
     
     
@@ -448,7 +449,7 @@ int main (int argc, char *argv[]) {
     for (i=0; i < dim; i++)
         for (j=0; j < dim; j++) TT_ns[i][j] = matrix[i][j];
     
-    /*
+    
      cout << "diagonalized Hessian matrix: " << endl;
      for (i=0; i < dim; i++) {
      for (j=0; j < dim; j++) {
@@ -465,14 +466,14 @@ int main (int argc, char *argv[]) {
      for (j=0; j < dim; j++) cout << TT_ns[i][j] << "    " ;
      cout << endl;
      }
-     */
+    
     
     // the coefficients of linear electronic coupling in normal modes (gamma[j]=TT_ns[j][0]*gamma_y), here gamma_y=1
     double gamma_nm[n_omega];
     for (i=0; i<n_omega; i++) gamma_nm[i] = TT_ns[i][0];
     
-    double shift_NE[n_omega]; //the s_j shifting for initial sampling
-    for (i=0; i<n_omega; i++) shift_NE[i] = s * gamma_nm[i];
+    //double shift_NE[n_omega]; //the s_j shifting for initial sampling
+    //for (i=0; i<n_omega; i++) shift_NE[i] = s * gamma_nm[i];
     
     //req of normal modes (acceptor's potential energy min shift)
     for (i = 0; i < n_omega; i++) {
@@ -547,13 +548,13 @@ int main (int argc, char *argv[]) {
     outfile.close();
     outfile.clear();
     
-    
-    
+    */
     
     
     //-------------- Summary ----------------
     
     cout << "-----THERMAL CONDITION------- " << endl;
+    cout << "Omega (primary) = " << Omega << endl;
     cout << "normal modes n_omega = " << n_omega << endl;
     cout << "omega_max = " << omega_max << endl;
     cout << "d_omega_eff = " << d_omega_eff << endl;
