@@ -17,7 +17,7 @@ using namespace std;
 double beta = 1.0;//0.1, 0.5;//1;//5;
 double eta = 1.0; //0.5;//1;//5;
 const double DAcoupling = 0.1;
-double Omega = 1; //primary mode freq
+double Omega = 2; //primary mode freq
 double y_0 = 1.0; //shift of primary mode
 
 const double omega_max = 15;//20;//15 or 20 for Jeff
@@ -127,6 +127,14 @@ int main (int argc, char *argv[]) {
     
     outfile1.open("J_eff(omega).dat");
     for (w = 1; w< n_omega; w++) outfile1 << J_eff[w] << endl;
+    outfile1.close();
+    outfile1.clear();
+    
+    outfile1.open("J_eff2(omega).dat");
+    for (w = 1; w< n_omega; w++) {
+        if ( w*d_omega < Omega && (w+1)*d_omega > Omega) outfile1 << J_omega_ohmic(w*d_omega, eta) + 10 << endl;
+        else outfile1 << J_omega_ohmic(w*d_omega, eta) << endl;
+    }
     outfile1.close();
     outfile1.clear();
     
