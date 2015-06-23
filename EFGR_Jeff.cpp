@@ -14,10 +14,10 @@
 #include <cmath>
 using namespace std;
 
-double beta = 1.0;//0.1, 0.5;//1;//5;
-double eta = 1.0; //0.5;//1;//5;
+double beta = 1;//0.2, 0.5;//1;//5;
+double eta = 1; //0.5;//1;//5;
 const double DAcoupling = 0.1;
-double Omega = 1.0; //primary mode freq
+double Omega = 0.5; //primary mode freq
 double y_0 = 1.0; //shift of primary mode
 
 const double omega_max = 15;//20;//15 or 20 for Jeff
@@ -26,8 +26,8 @@ const double d_omega = omega_max / n_omega;//0.1;
 const double d_omega_eff = omega_max / n_omega;//0.05; //for effective SD sampling rate
 const double omega_c = 1; //cutoff freq for ohmic
 
-const int LEN = 1024;//512; //number of t choices
-const double DeltaT = 0.3;//0.2; //FFT time sampling interval
+const int LEN = 512;//1024;//512; //number of t choices
+const double DeltaT = 0.2;//0.3;//0.2; //FFT time sampling interval
 const double T0= -DeltaT*(LEN*0.5);
 const double hbar = 1;
 const double pi=3.14159265358979324;
@@ -94,8 +94,8 @@ int main (int argc, char *argv[]) {
     double integral_re, integral_im;
     integral_re = integral_im = 0;
     
-    double SD[n_omega];
-    double J_eff[n_omega];
+    double J_eff[n_omega]; // Jeff  for Omega << omega_c
+    double J_eff2[n_omega];// Jeff2 for Omega >> omega_c
     
     int M; //time slice for tau = 0 --> tp
     int m; //index of tau
@@ -119,8 +119,8 @@ int main (int argc, char *argv[]) {
     double a_parameter_eff(0);
     
     //setting up spectral density
-    for (w = 1; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff(w*d_omega_eff, eta);
-    //for (w = 0; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff((w+1)*d_omega_eff, eta);
+    for (w = 1; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff(w*d_omega_eff, eta);//Jeff1
+    for (w = 1; w < n_omega; w++) J_eff2[w] = J_omega_ohmic(w*d_omega_eff, eta); //Jeff2
     
     outfile1.open("J_eff(omega).dat");
     for (w = 1; w< n_omega; w++) outfile1 << J_eff[w] << endl;
@@ -156,7 +156,7 @@ int main (int argc, char *argv[]) {
     
     //=============case: [1] Eq FGR using continuous SD J_eff(\omega)=============
     
-    //[a] Exact or LSC approximation
+    //[a] Exact or LSC approximation using Jeff
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
@@ -190,6 +190,41 @@ int main (int argc, char *argv[]) {
     outfile.close();
     outfile.clear();
     
+    
+    //[a'] Exact or LSC approximation using Jeff2
+    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
+    for (i = 0; i < LEN; i++) {
+        t = T0 + DeltaT * i;
+        integ_re[0] =0;
+        integ_im[0] =0;
+        for (w = 1; w < n_omega; w++) {
+            omega = w * d_omega_eff;
+            //omega = (w+1) * d_omega_eff;
+            Integrand_LSC(omega, t, integ_re[w], integ_im[w]);
+            integ_re[w] *= 4*J_eff2[w]/pi/(omega*omega);
+            integ_im[w] *= 4*J_eff2[w]/pi/(omega*omega);
+        }
+        Integrand_LSC(Omega, t, temp_re, temp_im);
+        integral_re = Integrate_from(integ_re, 1, n_omega, d_omega_eff);
+        integral_re += 2 * Omega * y_0 * y_0 * temp_re;//the Primary mode contribution
+        integral_im = Integrate_from(integ_im, 1, n_omega, d_omega_eff);
+        integral_im += 2 * Omega * y_0 * y_0 * temp_im;//the Primary mode contribution
+
+        corr1[i] = exp(-1 * integral_re) * cos(integral_im);
+        corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
+    }
+    
+    FFT(-1, mm, corr1, corr2);//notice its inverse FT
+    
+    for(i=0; i<nn; i++) { //shift time origin
+        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
+        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
+    }
+    
+    outfile.open("Exact_EFGR_Jeff2.dat");
+    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
+    outfile.close();
+    outfile.clear();
     
     
     //[b] inh approximation
@@ -349,7 +384,7 @@ int main (int argc, char *argv[]) {
     
     
     
-    /*
+    
     
     
     
@@ -449,7 +484,7 @@ int main (int argc, char *argv[]) {
     for (i=0; i < dim; i++)
         for (j=0; j < dim; j++) TT_ns[i][j] = matrix[i][j];
     
-    
+    /*
      cout << "diagonalized Hessian matrix: " << endl;
      for (i=0; i < dim; i++) {
      for (j=0; j < dim; j++) {
@@ -466,7 +501,7 @@ int main (int argc, char *argv[]) {
      for (j=0; j < dim; j++) cout << TT_ns[i][j] << "    " ;
      cout << endl;
      }
-    
+    */
     
     // the coefficients of linear electronic coupling in normal modes (gamma[j]=TT_ns[j][0]*gamma_y), here gamma_y=1
     double gamma_nm[n_omega];
@@ -548,7 +583,7 @@ int main (int argc, char *argv[]) {
     outfile.close();
     outfile.clear();
     
-    */
+    
     
     
     //-------------- Summary ----------------
