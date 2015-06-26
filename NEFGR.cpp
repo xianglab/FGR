@@ -16,8 +16,8 @@ using namespace std;
 
 const int bldim = 3;
 const int eldim = 3;
-double beta_list[bldim] = {0.5, 1.0, 2.0};
-double eta_list[eldim] = {0.5, 1.0, 2.0};
+double beta_list[bldim] = {0.2, 1, 5};//{0.2, 1.0, 5.0};
+double eta_list[eldim] = {0.5, 1, 5};//{0.2, 1.0, 5.0};
 double omega_DA_fix = 3; //fixed omega_DA, with scan tp
 
 double beta = 1;//0.2;//1;//5;
@@ -35,9 +35,9 @@ double Omega = 0.5; //primary mode freq
 double y_0 = 1; //shift of primary mode
 
 const int n_omega = 100;
-const double d_omega = 0.1;//0.1;//0.002;for gaussian//0.1; for ohmic
-//const double omega_max = 1;//20;//2.5 for gaussian// 20 for ohmic
-const double d_omega_eff = 0.1; //for effective SD sampling rate
+const double omega_max = 10;//20;//2.5 for gaussian// 20 for ohmic
+const double d_omega = omega_max / n_omega;//0.1;//0.002;for gaussian//0.1; for ohmic
+const double d_omega_eff = omega_max / n_omega; //for effective SD sampling rate
 
 const int LEN = 512;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
 const double DeltaT=0.2;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
@@ -65,6 +65,7 @@ void Integrand_NE_W0(double omega, double tp, double tau,  double shift, double 
 void Integrand_NE_Marcus(double omega, double tp, double tau,  double shift, double req, double &re, double &im);
 double Integrate(double *data, int n, double dx);
 double Sum(double *data, int n);
+double** Create_matrix(int row, int col);//new continuous 2D array in heap
 
 extern "C" {
     void dsyev_(const char &JOBZ, const char &UPLO, const int &N, double *A,
@@ -140,21 +141,24 @@ int main (int argc, char *argv[]) {
     double *work = new double [lwork];
     //-------------------------------------
     
-    double TT_ns[n_omega][n_omega];
+    double **TT_ns;
+    TT_ns = Create_matrix(n_omega, n_omega);
     //transformation matrix: [normal mode]=[[TT_ns]]*[system-bath]
     //TT_ns * D_matrix * T_sn = diag, eigenvectors are row-vector of TT_ns
     double omega_nm[n_omega]; //normal mode frequencies
     double req_nm[n_omega]; //req of normal modes (acceptor shift)
     double c_nm[n_omega];//coupling strength of normal modes
     double S_array[n_omega];//Huang-Rhys factor for normal modes
-    double D_matrix[n_omega][n_omega];// the Hessian matrix
+    //double D_matrix[n_omega][n_omega];// the Hessian matrix
+    double **D_matrix;
+    D_matrix = Create_matrix(n_omega, n_omega);
     //double Diag_matrix[n_omega][n_omega]; //for testing diagonalization
     double gamma_nm[n_omega]; //linear coupling coefficient
     double shift_NE[n_omega]; //the s_j shifting for initial sampling
     
     double tp; //t' for noneq preparation
     tp = tp_fix;
-    M = static_cast<int> (tp/DeltaTau);
+    M = static_cast<int> (tp_fix/DeltaTau);
     double tau;
     double *tau_array = new double [M];
     double *C_re = new double [M];
@@ -171,7 +175,7 @@ int main (int argc, char *argv[]) {
     cout << "-------------- NEFGR in Condon case --------------" << endl;
     
     //BEGIN loop through thermal conditions
-    
+    int case_count(0);
     for (beta_index = 0; beta_index < bldim; beta_index++)
         for (eta_index = 0; eta_index < eldim; eta_index++)
     {
@@ -347,7 +351,7 @@ int main (int argc, char *argv[]) {
 
     //option [A]: fix tp, scan omega_DA
     /*
-    for (m=0; m<M; m++) {//tau index
+    for (m=0; m < M; m++) {//tau index
         tau = m * DeltaTau;
         integ_re[0] = 0;
         integ_im[0] = 0;
@@ -403,7 +407,8 @@ int main (int argc, char *argv[]) {
     kneq=0;
     for (tp = 0; tp < tp_max; tp += Deltatp) {
         kre = kim = 0;
-        for (m=0; m<M; m++) {//tau index
+        M = static_cast<int> (tp/DeltaTau);//Attention!, update M for each tp
+        for (m=0; m < M; m++) {//tau index
             tau = m * DeltaTau;
             integ_re[0] = 0;
             integ_im[0] = 0;
@@ -412,10 +417,10 @@ int main (int argc, char *argv[]) {
             }
             integral_re = Sum(integ_re, n_omega);//*DeltaTau;
             integral_im = Sum(integ_im, n_omega);//*DeltaTau;
-            C_re[m] = exp(-1 * integral_re) * cos(integral_im);
-            C_im[m] = exp(-1 * integral_re) * sin(-1 * integral_im);
-            kre += C_re[m] * cos(omega_DA*tau) - C_im[m] * sin(omega_DA*tau);
-            kim += C_re[m] * sin(omega_DA*tau) + C_im[m] * cos(omega_DA*tau);
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            kre += temp_re * cos(omega_DA*tau) - temp_im * sin(omega_DA*tau);
+            kim += temp_re * sin(omega_DA*tau) + temp_im * cos(omega_DA*tau);
         }
         kre *= DeltaTau;
         kim *= DeltaTau;
@@ -441,6 +446,7 @@ int main (int argc, char *argv[]) {
     kneq=0;
     for (tp = 0; tp < tp_max; tp += Deltatp) {
         kre = kim = 0;
+        M = static_cast<int> (tp/DeltaTau);
         for (m=0; m<M; m++) {//tau index
             tau = m * DeltaTau;
             integ_re[0] = 0;
@@ -448,12 +454,12 @@ int main (int argc, char *argv[]) {
             for (w = 0; w < n_omega; w++) {
                 Integrand_NE_CAV(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]);
             }
-            integral_re = Sum(integ_re, n_omega);//*DeltaTau;
-            integral_im = Sum(integ_im, n_omega);//*DeltaTau;
-            C_re[m] = exp(-1 * integral_re) * cos(integral_im);
-            C_im[m] = exp(-1 * integral_re) * sin(-1 * integral_im);
-            kre += C_re[m] * cos(omega_DA*tau) - C_im[m] * sin(omega_DA*tau);
-            kim += C_re[m] * sin(omega_DA*tau) + C_im[m] * cos(omega_DA*tau);
+            integral_re = Sum(integ_re, n_omega); // *DeltaTau;
+            integral_im = Sum(integ_im, n_omega); // *DeltaTau;
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            kre += temp_re * cos(omega_DA*tau) - temp_im * sin(omega_DA*tau);
+            kim += temp_re * sin(omega_DA*tau) + temp_im * cos(omega_DA*tau);
         }
         kre *= DeltaTau;
         kim *= DeltaTau;
@@ -475,6 +481,7 @@ int main (int argc, char *argv[]) {
     kneq=0;
     for (tp = 0; tp < tp_max; tp += Deltatp) {
         kre = kim = 0;
+        M = static_cast<int> (tp/DeltaTau);
         for (m=0; m<M; m++) {//tau index
             tau = m * DeltaTau;
             integ_re[0] = 0;
@@ -482,12 +489,12 @@ int main (int argc, char *argv[]) {
             for (w = 0; w < n_omega; w++) {
                 Integrand_NE_CD(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]);
             }
-            integral_re = Sum(integ_re, n_omega);//*DeltaTau;
-            integral_im = Sum(integ_im, n_omega);//*DeltaTau;
-            C_re[m] = exp(-1 * integral_re) * cos(integral_im);
-            C_im[m] = exp(-1 * integral_re) * sin(-1 * integral_im);
-            kre += C_re[m] * cos(omega_DA*tau) - C_im[m] * sin(omega_DA*tau);
-            kim += C_re[m] * sin(omega_DA*tau) + C_im[m] * cos(omega_DA*tau);
+            integral_re = Sum(integ_re, n_omega); // *DeltaTau;
+            integral_im = Sum(integ_im, n_omega); // *DeltaTau;
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            kre += temp_re * cos(omega_DA*tau) - temp_im * sin(omega_DA*tau);
+            kim += temp_re * sin(omega_DA*tau) + temp_im * cos(omega_DA*tau);
         }
         kre *= DeltaTau;
         kim *= DeltaTau;
@@ -509,6 +516,7 @@ int main (int argc, char *argv[]) {
     kneq=0;
     for (tp = 0; tp < tp_max; tp += Deltatp) {
         kre = kim = 0;
+        M = static_cast<int> (tp/DeltaTau);
         for (m=0; m<M; m++) {//tau index
             tau = m * DeltaTau;
             integ_re[0] = 0;
@@ -516,12 +524,12 @@ int main (int argc, char *argv[]) {
             for (w = 0; w < n_omega; w++) {
                 Integrand_NE_W0(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]);
             }
-            integral_re = Sum(integ_re, n_omega);//*DeltaTau;
-            integral_im = Sum(integ_im, n_omega);//*DeltaTau;
-            C_re[m] = exp(-1 * integral_re) * cos(integral_im);
-            C_im[m] = exp(-1 * integral_re) * sin(-1 * integral_im);
-            kre += C_re[m] * cos(omega_DA*tau) - C_im[m] * sin(omega_DA*tau);
-            kim += C_re[m] * sin(omega_DA*tau) + C_im[m] * cos(omega_DA*tau);
+            integral_re = Sum(integ_re, n_omega); // *DeltaTau;
+            integral_im = Sum(integ_im, n_omega); // *DeltaTau;
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            kre += temp_re * cos(omega_DA*tau) - temp_im * sin(omega_DA*tau);
+            kim += temp_re * sin(omega_DA*tau) + temp_im * cos(omega_DA*tau);
         }
         kre *= DeltaTau;
         kim *= DeltaTau;
@@ -543,6 +551,7 @@ int main (int argc, char *argv[]) {
     kneq=0;
     for (tp = 0; tp < tp_max; tp += Deltatp) {
         kre = kim = 0;
+        M = static_cast<int> (tp/DeltaTau);
         for (m=0; m<M; m++) {//tau index
             tau = m * DeltaTau;
             integ_re[0] = 0;
@@ -550,12 +559,12 @@ int main (int argc, char *argv[]) {
             for (w = 0; w < n_omega; w++) {
                 Integrand_NE_Marcus(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]);
             }
-            integral_re = Sum(integ_re, n_omega);//*DeltaTau;
-            integral_im = Sum(integ_im, n_omega);//*DeltaTau;
-            C_re[m] = exp(-1 * integral_re) * cos(integral_im);
-            C_im[m] = exp(-1 * integral_re) * sin(-1 * integral_im);
-            kre += C_re[m] * cos(omega_DA*tau) - C_im[m] * sin(omega_DA*tau);
-            kim += C_re[m] * sin(omega_DA*tau) + C_im[m] * cos(omega_DA*tau);
+            integral_re = Sum(integ_re, n_omega); // *DeltaTau;
+            integral_im = Sum(integ_im, n_omega); // *DeltaTau;
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            kre += temp_re * cos(omega_DA*tau) - temp_im * sin(omega_DA*tau);
+            kim += temp_re * sin(omega_DA*tau) + temp_im * cos(omega_DA*tau);
         }
         kre *= DeltaTau;
         kim *= DeltaTau;
@@ -571,20 +580,22 @@ int main (int argc, char *argv[]) {
     outfile1.clear();
 
     
+        
+    case_count++;
 
     //-------------- Summary ----------------
     
-    cout << "THERMAL CONDITION done: " << endl;
+    cout << "CASE # " << case_count <<  " done:" << endl;
     cout << "   beta = " << beta << endl;
     cout << "    eta = " << eta << endl;
-    cout << "------------------------- " << endl<< endl;
+    cout << "-------------------" << endl;
     
     
     }
     
     
     
-    cout << "------------------ Summary ------------------" << endl;
+    cout << "--- SUMMARY --- " << endl;
     
     cout << "[1] fix tp, scan omega_DA" << endl;
     cout << "   fix tp = " << tp_fix << endl;
@@ -870,5 +881,13 @@ void DFT(int dir, int m, double *x, double *y) {
     return;
 }
 
+
+double** Create_matrix(int row, int col) {
+    double **matrix = new double* [col];
+    matrix[0] = new double [col*row];
+    for (int i = 1; i < col; ++i)
+        matrix[i] = matrix[i-1] + row;
+    return matrix;
+}
 
 
