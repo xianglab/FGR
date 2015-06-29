@@ -157,6 +157,8 @@ int main (int argc, char *argv[]) {
     //=============case: [1] Eq FGR using continuous SD J_eff(\omega)=============
     
     //[a] Exact or LSC approximation using Jeff
+    outfile1.open("Integral_Jeff.dat");
+    
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
@@ -174,6 +176,8 @@ int main (int argc, char *argv[]) {
         //integral_re = Integrate(integ_re, n_omega, d_omega_eff);
         //integral_im = Integrate(integ_im, n_omega, d_omega_eff);
         
+        outfile1 << integral_re << "\t" << integral_im << endl;
+        
         corr1[i] = exp(-1 * integral_re) * cos(integral_im);
         corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
     }
@@ -189,9 +193,12 @@ int main (int argc, char *argv[]) {
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
+    outfile1.close();
+    outfile1.clear();
     
     
     //[a'] Exact or LSC approximation using Jeff2
+    outfile1.open("Integral_Jeff2.dat");
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
@@ -209,7 +216,8 @@ int main (int argc, char *argv[]) {
         integral_re += 2 * Omega * y_0 * y_0 * temp_re;//the Primary mode contribution
         integral_im = Integrate_from(integ_im, 1, n_omega, d_omega_eff);
         integral_im += 2 * Omega * y_0 * y_0 * temp_im;//the Primary mode contribution
-
+        
+        outfile1 << integral_re << "\t" << integral_im << endl;
         corr1[i] = exp(-1 * integral_re) * cos(integral_im);
         corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
     }
@@ -225,6 +233,8 @@ int main (int argc, char *argv[]) {
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
+    outfile1.close();
+    outfile1.clear();
     
     
     //[b] inh approximation
@@ -553,6 +563,7 @@ int main (int argc, char *argv[]) {
     
     
     //===========case: [2] Eq FGR using discreitzed SD J_o(\omega) exact ===========
+    outfile1.open("Integral_nm_exact.dat");
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
@@ -567,6 +578,9 @@ int main (int argc, char *argv[]) {
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
+        
+        outfile1 << integral_re << "\t" << integral_im << endl;
+        
         corr1[i] = exp(-1 * integral_re) * cos(integral_im);
         corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
     }
@@ -582,7 +596,8 @@ int main (int argc, char *argv[]) {
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-    
+    outfile1.close();
+    outfile1.clear();
     
     
     

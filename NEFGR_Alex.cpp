@@ -13,7 +13,7 @@
 #include <cmath>
 using namespace std;
 
-double s = 1.5; //0.6, 1.0, 1.5 Noneq. initial shift of parimary mode
+double s = 0.6; //0.6, 1.0, 1.5 Noneq. initial shift of parimary mode
 double omega_DA_fix = 1.0; //fixed omega_DA, with scan tp
 double beta = 1.0;//0.2;//1;//5;
 double eta  = 1.0; //0.2;//1;//5;
@@ -161,7 +161,7 @@ int main (int argc, char *argv[]) {
                   
     cout << "-------------- NEFGR in Condon case --------------" << endl;
     
-    //BEGIN loop through thermal conditions
+    
     
         ss.str("");
         nameapp = "";
@@ -290,45 +290,8 @@ int main (int argc, char *argv[]) {
 
 
     //Case [2]: Noneq exact QM / LSC in Condon case using discreitzed J(\omega)
-
-    //option [A]: fix tp, scan omega_DA
-    /*
-    for (m=0; m<M; m++) {//tau index
-        tau = m * DeltaTau;
-        integ_re[0] = 0;
-        integ_im[0] = 0;
-        for (w = 0; w < n_omega; w++) {
-            Integrand_NE_exact(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]);
-        }
-        integral_re = Sum(integ_re, n_omega);
-        integral_im = Sum(integ_im, n_omega);
-        C_re[m] = exp(-1 * integral_re) * cos(integral_im);
-        C_im[m] = exp(-1 * integral_re) * sin(-1 * integral_im);
-    }
     
-    ss.clear();
-    idstr = "";
-    ss << "s" << s;
-    ss << "tp" << tp ;
-    idstr += ss.str();
-    
-    outfile.open((emptystr+"QMLSC_NEFGR_"+nameapp+idstr+".dat").c_str());
-    for(i = 0 ; i < nn/2; i++) {
-        omega_DA = i * d_omega_DA;
-        corr1[i] = corr2[i] = 0;
-        for (m=0; m<M; m++) {
-            tau = m * DeltaTau;
-            corr1[i] += C_re[m] * cos(omega_DA*tau) - C_im[m] * sin(omega_DA*tau);
-            corr2[i] += C_re[m] * sin(omega_DA*tau) + C_im[m] * cos(omega_DA*tau);
-        }
-        outfile << DeltaTau * corr1[i] *2*DAcoupling*DAcoupling << endl;
-    }
-    outfile.close();
-    outfile.clear();
-    */
-    
- 
-    //option [B]: fix omega_DA, scan tp = 0 - tp_max
+    //fix omega_DA, scan tp = 0 - tp_max
     
     omega_DA = omega_DA_fix; //fix omega_DA
 
@@ -349,6 +312,7 @@ int main (int argc, char *argv[]) {
     kneq=0;
     for (tp = 0; tp < tp_max; tp += Deltatp) {
         kre = kim = 0;
+        M = static_cast<int> (tp/DeltaTau);
         for (m=0; m<M; m++) {//tau index
             tau = m * DeltaTau;
             integ_re[0] = 0;
@@ -358,10 +322,10 @@ int main (int argc, char *argv[]) {
             }
             integral_re = Sum(integ_re, n_omega);//*DeltaTau;
             integral_im = Sum(integ_im, n_omega);//*DeltaTau;
-            C_re[m] = exp(-1 * integral_re) * cos(integral_im);
-            C_im[m] = exp(-1 * integral_re) * sin(-1 * integral_im);
-            kre += C_re[m] * cos(omega_DA*tau) - C_im[m] * sin(omega_DA*tau);
-            kim += C_re[m] * sin(omega_DA*tau) + C_im[m] * cos(omega_DA*tau);
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            kre += temp_re * cos(omega_DA*tau) - temp_im * sin(omega_DA*tau);
+            kim += temp_re * sin(omega_DA*tau) + temp_im * cos(omega_DA*tau);
         }
         kre *= DeltaTau;
         kim *= DeltaTau;
