@@ -103,8 +103,8 @@ int main (int argc, char *argv[]) {
         ss >> id;
         ss.clear();
     }
-    cout << "-------------- NEFGR in Condon case --------------" << endl;
-    cout << ">>> Job id # " << id << endl;
+
+    cout << ">>> Start Job id # " << id << " of num NEFGR in Condon case." << endl;
     
     int startTime;
     startTime = time(NULL);
@@ -197,16 +197,11 @@ int main (int argc, char *argv[]) {
     double sum(0);
     double kneq(0);
     
-    
-    //BEGIN thermal condition beta , eta
-    
-
     ss.str("");
     nameapp = "";
     ss << "b" << beta;
     ss << "e" << eta << "_";
     nameapp = ss.str();
-
     
     //setting up spectral density
     //for (w = 0; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff(w*d_omega_eff, eta);
@@ -436,25 +431,15 @@ int main (int argc, char *argv[]) {
     */
 
     
-    
-    
-    
-    
     //-------------- Summary ----------------
     
-    cout << "THERMAL CONDITION: " << endl;
-    cout << "   beta = " << beta << endl;
-    cout << "    eta = " << eta << endl;
-
-    
-    cout << "[job done] fix omega_DA, scan tp" << endl;
-    cout << "   fix omega_DA = " << omega_DA_fix << endl;
-    cout << "   Delta tp = " << Deltatp << endl;
-    cout << "   number of tp = " << tp_max/Deltatp << endl << endl;
-    
-    cout << "   normal modes n_omega = " << n_omega << endl;
-    cout << "   initial shift s = " << s << endl;
-    cout << "---------- END of all NEFGR in Condon case ----------" << endl;
+    cout << "   Parameters: " << endl;
+    cout << "       beta = " << beta << endl;
+    cout << "        eta = " << eta << endl;
+    cout << "       fix omega_DA = " << omega_DA_fix << endl;
+    cout << "       normal modes n_omega = " << n_omega << endl;
+    cout << "       initial shift s = " << s << endl;
+    cout << ">>> Job done. Total time elapsed " << time(NULL) - startTime << endl;
     return 0;
 }
 
