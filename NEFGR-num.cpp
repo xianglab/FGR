@@ -10,13 +10,14 @@
 #include <sstream>
 #include <iomanip>
 #include <cmath>
+#include <ctime>
 #include "r_1279.h"  // r1279 random number generator
 using namespace std;
 
 //*********** change parameter *********
 const double beta = 1; //3;
 const double eta = 1;  //3;
-double omega_DA_fix = 1; //fixed omega_DA, with scan tp
+double omega_DA_fix = 2; //fixed omega_DA, with scan tp
 double s = 1;    //Noneq. initial shift of parimary mode
 const int MCN = 5000;//50000; //Monte Carlo sample rate
 //*********** **************** *********
@@ -48,7 +49,7 @@ const double sigma = 0.1;
 const double omega_op = 1.0;
 
 //for numerical MD
-double DT=0.002; //MD time step
+double DT=0.0005; //MD time step 0.002
 double DTSQ2 = DT * DT * 0.5;
 double DT2 = DT/2.0;
 double ABSDT= abs(DT);
@@ -76,7 +77,7 @@ void force_avg(double R[], double F[], double omega[], double req[]);
 void force_donor(double R[], double F[], double omega[], double req[]);
 double DU(double R[], double omega[], double req[]);
 double DUi(double R[], double omega[], double req[], int i);
-int Job_finished(int &jobdone, int count, int total);
+int Job_finished(int &jobdone, int count, int total, int startTime);
 
 
 extern "C" {
@@ -102,9 +103,11 @@ int main (int argc, char *argv[]) {
         ss >> id;
         ss.clear();
     }
-    cout << "----------------------------" << endl;
+    cout << "-------------- NEFGR in Condon case --------------" << endl;
     cout << ">>> Job id # " << id << endl;
     
+    int startTime;
+    startTime = time(NULL);
     int jobdone(0);
     int mm(0), nn(1); // nn = 2^mm is number of (complex) data to FFT
 	
@@ -170,14 +173,16 @@ int main (int argc, char *argv[]) {
     double *work = new double [lwork];
     //-------------------------------------
     
-    double TT_ns[n_omega][n_omega];
+    double **TT_ns;//[n_omega][n_omega];
+    TT_ns = Create_matrix(n_omega, n_omega);
     //transformation matrix: [normal mode]=[[TT_ns]]*[system-bath]
     //TT_ns * D_matrix * T_sn = diag, eigenvectors are row-vector of TT_ns
     double omega_nm[n_omega]; //normal mode frequencies
     double req_nm[n_omega]; //req of normal modes (acceptor shift)
     double c_nm[n_omega];//coupling strength of normal modes
     double S_array[n_omega];//Huang-Rhys factor for normal modes
-    double D_matrix[n_omega][n_omega];// the Hessian matrix
+    double **D_matrix;//[n_omega][n_omega];// the Hessian matrix
+    D_matrix = Create_matrix(n_omega, n_omega);
     //double Diag_matrix[n_omega][n_omega]; //for testing diagonalization
     double gamma_nm[n_omega]; //linear coupling coefficient
     double shift_NE[n_omega]; //the s_j shifting for initial sampling
@@ -186,19 +191,12 @@ int main (int argc, char *argv[]) {
     M = static_cast<int> (tp_max/DeltaTau);
     int tp_index;
     double tau;
-    double *tau_array = new double [M];
-    double *C_re = new double [M];
-    double *C_im = new double [M];
     double d_omega_DA = 2 * pi / LEN / DeltaT; //omega_DA griding size
     double omega_DA;
     double kre, kim;
     double sum(0);
     double kneq(0);
     
-    int beta_index(0);
-    int eta_index(0);
-                  
-    cout << "-------------- NEFGR in Condon case --------------" << endl;
     
     //BEGIN thermal condition beta , eta
     
@@ -272,7 +270,8 @@ int main (int argc, char *argv[]) {
     
     //******** END of Normal mode analysis **************
     
-
+    //cout << "Normal mode analysis done. " << endl;
+    
     // Noneq LSC in Condon case using discreitzed J(\omega)
     //option: fix omega_DA, scan tp = 0 - tp_max
     
@@ -281,7 +280,7 @@ int main (int argc, char *argv[]) {
     //ss.clear();
     ss.str("");
     ss << "s" << s;
-    ss << "w" << omega_DA << "_" << MCN << "_";
+    ss << "w" << omega_DA << "_";
     nameapp += ss.str();
     
     double R0[n_omega];//wigner initial sampling
@@ -300,14 +299,14 @@ int main (int argc, char *argv[]) {
     //allocate uncontineous 2D array with different column length
     double **C_re_accum = new double *[tp_index_max];
     double **C_im_accum = new double *[tp_index_max];
-    for (tp_index = 0; tp < tp_index_max; tp_index++) {
+    for (tp_index = 0; tp_index < tp_index_max; tp_index++) {
         tp = tp_index * Deltatp;
         M = static_cast<int> (tp/DeltaTau);
         C_re_accum[tp_index] = new double [M];
         C_im_accum[tp_index] = new double [M];
         for (m=0; m<M; m++) {
             C_re_accum[tp_index][m] = 0; //initialize C_re_accum[][]
-            C_im_accum[tp_index][m] = 0; //initialize C_re_accum[][]
+            C_im_accum[tp_index][m] = 0; //initialize C_im_accum[][]
         }
     }
     double sigma_R[n_omega];// standard deviation of R0 and V0
@@ -323,6 +322,9 @@ int main (int argc, char *argv[]) {
     double *du_accum = new double [NMD_AV];
     double sum_du(0);
     
+    outfile.open((emptystr+"num_LSC_NEFGR_C_"+nameapp+idstr+".dat").c_str());
+    if (!outfile.is_open()) cout << "Error when open file!" << endl;
+
     // *********  Start Monte Carlo phase-space integration (R0,P0) *********
     for (j = 0; j < MCN; j++) {
         
@@ -335,7 +337,7 @@ int main (int argc, char *argv[]) {
         }
         
         //tp loop --------------------
-        for (tp_index = 0; tp < tp_index_max; tp_index++) {
+        for (tp_index = 0; tp_index < tp_index_max; tp_index++) {
             tp = tp_index * Deltatp;
 
             //propagate on donor surface for Deltatp
@@ -376,16 +378,18 @@ int main (int argc, char *argv[]) {
  
         } // end of tp loop
         
+        Job_finished(jobdone, j, MCN, startTime);
+        
     } // end of MC j loop
     
     // *********  END. Monte Carlo phase-space integration (R0,P0) *********
     
-    outfile.open((emptystr+"num_LSC_NEFGR_C_"+nameapp+idstr+".dat").c_str());
-    for (tp_index = 0; tp < tp_index_max; tp_index++) {
+    for (tp_index = 0; tp_index < tp_index_max; tp_index++) {
         tp = tp_index * Deltatp;
         M = static_cast<int> (tp/DeltaTau);
-        for (m=0; m<M; m++) {
-            outfile << C_re_accum[tp_index][m] << "\t" << C_im_accum[tp_index][m] << endl;
+        for (m = 0; m < M; m++) {
+            outfile << C_re_accum[tp_index][m]/MCN << endl;
+            outfile << C_im_accum[tp_index][m]/MCN << endl;
         }
     }
     outfile.close();
@@ -737,12 +741,14 @@ double DUi(double R[], double omega[], double req[], int i) {
     return du;
 }
 
-int Job_finished(int &jobdone, int count, int total) {
+int Job_finished(int &jobdone, int count, int total, int startTime) {
     int tenpercent;
+    int currentTime;
     tenpercent = static_cast<int> (10 * static_cast<double> (count)/ static_cast<double> (total) );
     if ( tenpercent > jobdone ) {
         jobdone = tenpercent;
-        cout << "Job finished "<< jobdone <<"0%. " << endl;
+        currentTime = time(NULL);
+        cout << "Job finished "<< jobdone <<"0%. Time elapsed " << currentTime - startTime << " s." << endl;
     }
     return tenpercent;
 }
