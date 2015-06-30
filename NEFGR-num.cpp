@@ -274,8 +274,7 @@ int main (int argc, char *argv[]) {
 
     //ss.clear();
     ss.str("");
-    ss << "s" << s;
-    ss << "w" << omega_DA << "_";
+    ss << "s" << s << "w" << omega_DA_fix << "_" << MCN << "_";
     nameapp += ss.str();
     
     double R0[n_omega];//wigner initial sampling
