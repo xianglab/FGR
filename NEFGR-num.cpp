@@ -732,7 +732,7 @@ int Job_finished(int &jobdone, int count, int total, int startTime) {
     if ( tenpercent > jobdone ) {
         jobdone = tenpercent;
         currentTime = time(NULL);
-        cout << "Job finished "<< jobdone <<"0%. Time elapsed " << currentTime - startTime << " s." << endl;
+        cout << "Job finished "<< jobdone <<"0 %. (Time elapsed " << currentTime - startTime << " s.)" << endl;
     }
     return tenpercent;
 }
