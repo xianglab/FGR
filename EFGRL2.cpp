@@ -11,8 +11,12 @@
 #include <sstream>
 #include <iomanip>
 #include <cmath>
-//#include "r_1279.h"  // r1279 random number generator
 using namespace std;
+
+const int bldim = 3;
+const int eldim = 3;
+double beta_list[bldim] = {0.2, 1, 5};//{0.2, 1.0, 5.0};
+double eta_list[eldim] = {0.5, 1, 5};//{0.2, 1.0, 5.0};
 
 double beta = 1;//0.2;//1;//5;
 const double eta = 1; //0.2;//1;//5;
@@ -27,9 +31,8 @@ const double omega_op = 1.0;
 
 const int n_omega = 200;
 const double d_omega = 0.1;//0.1;//0.002;for gaussian//0.1; for ohmic
-//const double omega_max = 1;//20;//2.5 for gaussian// 20 for ohmic
+const double omega_max = 20;//20;//2.5 for gaussian// 20 for ohmic
 const double d_omega_eff = 0.1; //for effective SD sampling rate
-
 
 const int LEN = 512;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
 const double DeltaT=0.2;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
@@ -47,13 +50,16 @@ double J_omega_ohmic(double omega, double eta);//bath Ohmic SD
 double J_omega_ohmic_eff(double omega, double eta); //effective SD for Ohmic bath
 void Integrand_exact(double omega, double t, double &re, double &im);
 void Integrand_LSC(double omega, double t, double &re, double &im);
-void Integrand_LSC_inh(double omega, double t, double &re, double &im);
-void Integrand_CL_avg(double omega, double t, double &re, double &im);
-void Integrand_CL_donor(double omega, double t, double &re, double &im);
-void Integrand_2cumu(double omega, double t, double &re, double &im);
-void Integrand_2cumu_inh(double omega, double t, double &re, double &im);
+void Integrand_CAV(double omega, double t, double &re, double &im);
+void Integrand_CD(double omega, double t, double &re, double &im);
+void Integrand_W0(double omega, double t, double &re, double &im);
+void Integrand_Marcus(double omega, double t, double &re, double &im);
 void Linear_exact(double omega, double t, double req, double &re, double &im);
 void Linear_LSC(double omega, double t, double req, double &re, double &im);
+void Linear_CAV(double omega, double t, double req, double &re, double &im);
+void Linear_CD(double omega, double t, double req, double &re, double &im);
+void Linear_W0(double omega, double t, double req, double &re, double &im);
+void Linear_Marcus(double omega, double t, double req, double &re, double &im);
 double Integrate(double *data, int n, double dx);
 double Sum(double *data, int n);
 
@@ -69,7 +75,7 @@ int main (int argc, char *argv[]) {
     
     stringstream ss;
     string emptystr("");
-    string nameapp = "Ohm_b1e1";
+    string nameapp = "";
     string filename;
     string idstr("");
 
@@ -92,13 +98,6 @@ int main (int argc, char *argv[]) {
     int w; //count of omega
     double integ_re[n_omega];
     double integ_im[n_omega];
-    
-    /*
-    long seed;
-    seed 	= seedgen();	// have seedgen compute a random seed
-    setr1279(seed);		// seed the genertor
-    r1279(); //[0,1] random number
-    */
     
     ofstream outfile;
     
@@ -338,7 +337,7 @@ int main (int argc, char *argv[]) {
     
     
     
-    
+    /*
     //[3] exact quantum EFGR Linear coupling with continuous SD J_eff(omega)
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
@@ -356,8 +355,10 @@ int main (int argc, char *argv[]) {
             Linear_exact(omega, t, req_eff[w], linear_re, linear_im);
             linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
             linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
-            //the gamma_array is for normal modes, not evenly distributed eff omega.....
-            //Thus this result does not mean anything!!!
+     
+        //the gamma_array is for normal modes, not evenly distributed eff omega.....
+        //Thus this result does not mean anything!!!
+     
         }
         integral_re = Integrate(integ_re, n_omega, d_omega);
         integral_im = Integrate(integ_im, n_omega, d_omega);
@@ -378,7 +379,7 @@ int main (int argc, char *argv[]) {
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-
+    */
     
 
     //[4] exact quantum EFGR Linear coupling with discrete normal modes
@@ -449,16 +450,6 @@ int main (int argc, char *argv[]) {
         corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
         corr2[i] = temp_re * linear_accum_im + temp_re * linear_accum_im;
     }
-
-    //outfile.open("LSC_EFGRL_t_re.dat");
-    //for (i=0; i< LEN; i++) outfile << corr1[i] << endl;
-    //outfile.close();
-    //outfile.clear();
-    
-    //outfile.open("LSC_EFGRL_t_im.dat");
-    //for (i=0; i< LEN; i++) outfile << corr2[i] << endl;
-    //outfile.close();
-    //outfile.clear();
     
     FFT(-1, mm, corr1, corr2);//notice its inverse FT
 
@@ -744,61 +735,84 @@ double J_omega_ohmic_eff(double omega, double eta) {
 //min-to-min energy as Fourier transform frequency
 
 void Integrand_exact(double omega, double t, double &re, double &im) {
-    re = (1-cos(omega*t))/tanh(beta*hbar*omega/2);
+    double Coth = 1.0/tanh(beta*hbar*omega*0.5);
+    re = (1-cos(omega*t))*Coth;
     im = sin(omega*t);
     return;
 }
 
 void Linear_exact(double omega, double t, double req, double &re, double &im) {
-    re = 0.5*hbar/omega/tanh(beta*hbar*omega/2)*cos(omega*t) + 0.25*req*req*((1-cos(omega*t))*(1-cos(omega*t)) - sin(omega*t)*sin(omega*t)/tanh(beta*hbar*omega/2)/tanh(beta*hbar*omega/2));
-    im = -0.5*hbar/omega*sin(omega*t) + 0.5*req*req/tanh(beta*hbar*omega/2)*(1-cos(omega*t))*sin(omega*t);
+    double Coth = 1.0/tanh(beta*hbar*omega*0.5);
+    re = 0.5*hbar/omega*Coth*cos(omega*t) + 0.25*req*req*((1-cos(omega*t))*(1-cos(omega*t)) - sin(omega*t)*sin(omega*t)*Coth*Coth;
+    im = -0.5*hbar/omega*sin(omega*t) + 0.5*req*req*Coth*(1-cos(omega*t))*sin(omega*t);
     return;
 }
 
 void Integrand_LSC(double omega, double t, double &re, double &im) {
-    re = (1-cos(omega*t))/tanh(beta*hbar*omega/2);
+    double Coth = 1.0/tanh(beta*hbar*omega*0.5);
+    re = (1-cos(omega*t))*Coth;
     im = sin(omega*t);
     return;
 }
 
 void Linear_LSC(double omega, double t, double req, double &re, double &im) {
-    re = 0.5*hbar/omega/tanh(beta*hbar*omega/2)*cos(omega*t) - 0.25*req*req* sin(omega*t)*sin(omega*t)/tanh(beta*hbar*omega/2)/tanh(beta*hbar*omega/2);
-    im = -0.5*hbar/omega*sin(omega*t) + 0.25*req*req/tanh(beta*hbar*omega/2)*(1-cos(omega*t))*sin(omega*t);
+    double Coth = 1.0/tanh(beta*hbar*omega*0.5);
+    re = 0.5*hbar/omega* Coth *cos(omega*t) - 0.25*req*req* sin(omega*t)*sin(omega*t)*Coth*Coth;
+    im = -0.5*hbar/omega*sin(omega*t) + 0.25*req*req*Coth*(1-cos(omega*t))*sin(omega*t);
     return;
 }
 
-
-void Integrand_LSC_inh(double omega, double t, double &re, double &im) {
-    re = omega*omega*t*t/2/tanh(beta*hbar*omega/2);
-    im = omega*t;
-    return;
-}
-
-void Integrand_CL_avg(double omega, double t, double &re, double &im) {
+void Integrand_CAV(double omega, double t, double &re, double &im) {
     re = (1-cos(omega*t))*2/(beta*hbar*omega);
     im = sin(omega*t);
     return;
 }
 
-void Integrand_CL_donor(double omega, double t, double &re, double &im) {
+void Linear_CAV(double omega, double t, double req, double &re, double &im) {
+    re = (beta*hbar*hbar*cos(omega*t) - req*req*sin(omega*t)*sin(omega*t)) / (beta*beta * hbar*hbar *omega*omega);
+    im = 0;
+    return;
+}
+
+void Integrand_CD(double omega, double t, double &re, double &im) {
     re = (1-cos(omega*t))*2/(beta*hbar*omega);
     im = omega*t;
     return;
 }
 
-void Integrand_2cumu(double omega, double t, double &re, double &im) {
-    re = (1-cos(omega*t))*2/(beta*hbar*omega);
+void Linear_CD(double omega, double t, double req, double &re, double &im) {
+    re = (beta*hbar*hbar*cos(omega*t) - req*req*sin(omega*t)*sin(omega*t)) / (beta*beta * hbar*hbar *omega*omega);
+    im = 0;
+    return;
+}
+
+void Integrand_W0(double omega, double t, double &re, double &im) {
+    double Coth = 1.0/tanh(beta*hbar*omega*0.5);
+    re = omega*omega*t*t*0.5 * Coth;
     im = omega*t;
     return;
 }
 
-void Integrand_2cumu_inh(double omega, double t, double &re, double &im) {
+void Linear_W0(double omega, double t, double req, double &re, double &im) {
+    double Coth = 1.0/tanh(beta*hbar*omega*0.5);
+    re = ( 0.5*hbar/omega - 0.25*req*req*omega*omega*t*t*Coth)*Coth;
+    im = 0;
+    return;
+}
+
+
+void Integrand_Marcus(double omega, double t, double &re, double &im) {
     re = omega*t*t/(beta*hbar);
     im = omega*t;
     return;
 }
-
-
+                                                        
+void Linear_Marcus(double omega, double t, double req, double &re, double &im) {
+  re = 1.0/(beta*omega*omega) - req*req*t*t/(beta*beta*hbar*hbar);
+  im = 0;
+  return;
+}
+                                                          
 double Integrate(double *data, int n, double dx){
     double I =0;
     I += (data[0]+data[n-1]);//  /2;
