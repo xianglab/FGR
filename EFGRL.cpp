@@ -13,10 +13,10 @@
 #include <cmath>
 using namespace std;
 
-const int bldim = 3;
-const int eldim = 3;
-double beta_list[bldim] = {0.2, 1, 5};//{0.2, 1.0, 5.0};
-double eta_list[eldim] = {0.5, 1, 5};//{0.2, 1.0, 5.0};
+const int bldim = 1;
+const int eldim = 1;
+double beta_list[bldim] = {1};//{0.2, 1.0, 5.0};
+double eta_list[eldim] = {1};//{0.5, 1.0, 5.0};
 
 double beta = 1;//0.2;//1;//5;
 double eta = 1; //0.2;//1;//5;
@@ -161,7 +161,7 @@ int main (int argc, char *argv[]) {
             
     
     //------- setting up spectral density ----------
-    //for (w = 0; w < n_omega; w++) SD[w] = S_omega_ohmic(w*d_omega, eta);
+    for (w = 0; w < n_omega; w++) SD[w] = S_omega_ohmic(w*d_omega, eta);
     for (w = 0; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff((w+1)*d_omega_eff, eta);
     for (w = 0; w < n_omega; w++) req_eff[w] = sqrt(8 * hbar * J_eff[w] / (pi * (w+1) * d_omega_eff* (w+1) * d_omega_eff*(w+1)));//eq min for each Jeff normal mode
     
@@ -288,7 +288,7 @@ int main (int argc, char *argv[]) {
     
 
     //[A] exact quantum EFGR Linear coupling with discrete normal modes
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
+    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
         integ_re[0] = 0;
@@ -324,12 +324,45 @@ int main (int argc, char *argv[]) {
     outfile.close();
     outfile.clear();
 
+    //[B] LSC approximation using normal modes
+    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
+    for (i = 0; i < LEN; i++) {
+        t = T0 + DeltaT * i;
+        integ_re[0] = 0;
+        integ_im[0] = 0;
+        linear_accum_re = 0;
+        linear_accum_im = 0;
+        for (w = 0; w < n_omega; w++) {
+            Integrand_LSC(omega_nm[w], t, integ_re[w], integ_im[w]);
+            integ_re[w] *= S_array[w];
+            integ_im[w] *= S_array[w];
+            
+            Linear_LSC(omega_nm[w], t, req_nm[w], linear_re, linear_im);
+            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
+            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
+        }
+        integral_re = Sum(integ_re, n_omega);
+        integral_im = Sum(integ_im, n_omega);
+        temp_re = exp(-1 * integral_re) * cos(integral_im);
+        temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
+        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
+        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
+    }
     
-
-
+    FFT(-1, mm, corr1, corr2);//notice its inverse FT
     
+    for(i=0; i<nn; i++) { //shift time origin
+        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
+        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
+    }
     
-    //LSC approximation
+    outfile.open((emptystr + "LSC_EFGRL_" + nameapp + ".dat").c_str());
+    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
+    outfile.close();
+    outfile.clear();
+        
+    /*
+    //[B] LSC approximation using S(omega) ohmic??
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
@@ -369,101 +402,162 @@ int main (int argc, char *argv[]) {
     
     outfile.close();
     outfile.clear();
+     */
     
     
-/*
-    
-    //LSC inhomogeneous limit
+    //[C] C-AV approximation using normal modes
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
-    for (i=0; i< LEN; i++) {
+    for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
-        integ_re[0]=integ_im[0]=0;
-        for (w = 1; w < n_omega; w++) {
-            omega = w * d_omega;
-            Integrand_LSC_inh(omega, t, integ_re[w], integ_im[w]);
-            integ_re[w] *= SD[w];
-            integ_im[w] *= SD[w];
+        integ_re[0] = 0;
+        integ_im[0] = 0;
+        linear_accum_re = 0;
+        linear_accum_im = 0;
+        for (w = 0; w < n_omega; w++) {
+            Integrand_CAV(omega_nm[w], t, integ_re[w], integ_im[w]);
+            integ_re[w] *= S_array[w];
+            integ_im[w] *= S_array[w];
+            
+            Linear_CAV(omega_nm[w], t, req_nm[w], linear_re, linear_im);
+            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
+            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
         }
-        integral_re = Integrate(integ_re, n_omega, d_omega);
-        integral_im = Integrate(integ_im, n_omega, d_omega);
-        
-        corr1[i] = exp(-1 * integral_re) * cos(integral_im);
-        corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
+        integral_re = Sum(integ_re, n_omega);
+        integral_im = Sum(integ_im, n_omega);
+        temp_re = exp(-1 * integral_re) * cos(integral_im);
+        temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
+        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
+        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
     }
     
-    outfile.open("inh_t_re.dat");
-    for (i=0; i< LEN; i++) outfile << corr1[i] << endl;
-    outfile.close();
-    outfile.clear();
-    
-    outfile.open("inh_t_im.dat");
-    for (i=0; i< LEN; i++) outfile << corr2[i] << endl;
-    outfile.close();
-    outfile.clear();
-    
-    FFT(-1, mm, corr1, corr2);
+    FFT(-1, mm, corr1, corr2);//notice its inverse FT
     
     for(i=0; i<nn; i++) { //shift time origin
         corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
         corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
     }
     
-    outfile.open("inh_re.dat");
+    outfile.open((emptystr + "CAV_EFGRL_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
+        
+    //[D] C-D approximation using normal modes
+    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
+    for (i = 0; i < LEN; i++) {
+        t = T0 + DeltaT * i;
+        integ_re[0] = 0;
+        integ_im[0] = 0;
+        linear_accum_re = 0;
+        linear_accum_im = 0;
+        for (w = 0; w < n_omega; w++) {
+            Integrand_CD(omega_nm[w], t, integ_re[w], integ_im[w]);
+            integ_re[w] *= S_array[w];
+            integ_im[w] *= S_array[w];
+            
+            Linear_CD(omega_nm[w], t, req_nm[w], linear_re, linear_im);
+            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
+            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
+        }
+        integral_re = Sum(integ_re, n_omega);
+        integral_im = Sum(integ_im, n_omega);
+        temp_re = exp(-1 * integral_re) * cos(integral_im);
+        temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
+        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
+        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
+    }
     
-    outfile.open("inh_im.dat");
-    for (i=0; i<nn/2; i++) outfile << corr2_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
+    FFT(-1, mm, corr1, corr2);//notice its inverse FT
+    
+    for(i=0; i<nn; i++) { //shift time origin
+        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
+        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
+    }
+    
+    outfile.open((emptystr + "CD_EFGRL_" + nameapp + ".dat").c_str());
+    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
+        
+    //[E] W-0 (inhomogeneous) approximation using normal modes
+    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
+    for (i = 0; i < LEN; i++) {
+        t = T0 + DeltaT * i;
+        integ_re[0] = 0;
+        integ_im[0] = 0;
+        linear_accum_re = 0;
+        linear_accum_im = 0;
+        for (w = 0; w < n_omega; w++) {
+            Integrand_W0(omega_nm[w], t, integ_re[w], integ_im[w]);
+            integ_re[w] *= S_array[w];
+            integ_im[w] *= S_array[w];
+            
+            Linear_W0(omega_nm[w], t, req_nm[w], linear_re, linear_im);
+            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
+            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
+        }
+        integral_re = Sum(integ_re, n_omega);
+        integral_im = Sum(integ_im, n_omega);
+        temp_re = exp(-1 * integral_re) * cos(integral_im);
+        temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
+        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
+        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
+    }
+    
+    FFT(-1, mm, corr1, corr2);//notice its inverse FT
+    
+    for(i=0; i<nn; i++) { //shift time origin
+        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
+        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
+    }
+    
+    outfile.open((emptystr + "W0_EFGRL_" + nameapp + ".dat").c_str());
+    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
+    outfile.close();
+    outfile.clear();
+        
+        
+    //[F] Marcus-limit approximation using normal modes
+    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
+    for (i = 0; i < LEN; i++) {
+        t = T0 + DeltaT * i;
+        integ_re[0] = 0;
+        integ_im[0] = 0;
+        linear_accum_re = 0;
+        linear_accum_im = 0;
+        for (w = 0; w < n_omega; w++) {
+            Integrand_Marcus(omega_nm[w], t, integ_re[w], integ_im[w]);
+            integ_re[w] *= S_array[w];
+            integ_im[w] *= S_array[w];
+            
+            Linear_Marcus(omega_nm[w], t, req_nm[w], linear_re, linear_im);
+            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
+            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
+        }
+        integral_re = Sum(integ_re, n_omega);
+        integral_im = Sum(integ_im, n_omega);
+        temp_re = exp(-1 * integral_re) * cos(integral_im);
+        temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
+        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
+        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
+    }
+    
+    FFT(-1, mm, corr1, corr2);//notice its inverse FT
+    
+    for(i=0; i<nn; i++) { //shift time origin
+        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
+        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
+    }
+    
+    outfile.open((emptystr + "Marcus_EFGRL_" + nameapp + ".dat").c_str());
+    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
+    outfile.close();
+    outfile.clear();
+        
+    
 
-    //Classical sampling with average potential dynamics
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
-    for (i=0; i< LEN; i++) {
-        t = T0 + DeltaT * i;
-        integ_re[0]=integ_im[0]=0;
-        for (w = 1; w < n_omega; w++) {
-            omega = w * d_omega;
-            Integrand_CL_avg(omega, t, integ_re[w], integ_im[w]);
-            integ_re[w] *= SD[w];
-            integ_im[w] *= SD[w];
-        }
-        integral_re = Integrate(integ_re, n_omega, d_omega);
-        integral_im = Integrate(integ_im, n_omega, d_omega);
-        
-        corr1[i] = exp(-1 * integral_re) * cos(integral_im);
-        corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
-    }
     
-    outfile.open("CL_avg_t_re.dat");
-    for (i=0; i< LEN; i++) outfile << corr1[i] << endl;
-    outfile.close();
-    outfile.clear();
-    
-    outfile.open("CL_avg_t_im.dat");
-    for (i=0; i< LEN; i++) outfile << corr2[i] << endl;
-    outfile.close();
-    outfile.clear();
-    
-    FFT(-1, mm, corr1, corr2);
-    
-    for(i=0; i<nn; i++) { //shift time origin
-        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
-        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
-    }
-    
-    outfile.open("CL_avg_re.dat");
-    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-    
-    outfile.open("CL_avg_im.dat");
-    for (i=0; i<nn/2; i++) outfile << corr2_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-    
-    
+    /*
     //Classical sampling with donor potential dynamics (freq shifting)
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
     for (i=0; i< LEN; i++) {
@@ -511,72 +605,14 @@ int main (int argc, char *argv[]) {
     outfile.close();
     outfile.clear();
     
-    outfile.open("CL_donor_im.dat");
-    for (i=nn-shift_f; i<nn; i++) outfile << corr2_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    for (i=0; i<nn-shift_f; i++) outfile << corr2_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
+    */
     
     
-    
-    //second order cumulant, inhomogeneous limit (Marcus)
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
-    for (i=0; i< LEN; i++) {
-        t = T0 + DeltaT * i;
-        integ_re[0]=integ_im[0]=0;
-        for (w = 1; w < n_omega; w++) {
-            omega = w * d_omega;
-            Integrand_2cumu_inh(omega, t, integ_re[w], integ_im[w]);
-            integ_re[w] *= SD[w];
-            integ_im[w] *= SD[w];
-        }
-        integral_re = Integrate(integ_re, n_omega, d_omega);
-        integral_im = Integrate(integ_im, n_omega, d_omega);
-        
-        corr1[i] = exp(-1 * integral_re) * cos(integral_im);
-        corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
-    }
-    
-    outfile.open("macus_t_re.dat");
-    for (i=0; i< LEN; i++) outfile << corr1[i] << endl;
-    outfile.close();
-    outfile.clear();
-    
-    outfile.open("marcus_t_im.dat");
-    for (i=0; i< LEN; i++) outfile << corr2[i] << endl;
-    outfile.close();
-    outfile.clear();
-    
-    FFT(-1, mm, corr1, corr2);
-    
-    for(i=0; i<nn; i++) { //shift time origin
-        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
-        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
-    }
-    
-    outfile.open("marcus_re.dat");
-    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-    
-    outfile.open("marcus_im.dat");
-    for (i=0; i<nn/2; i++) outfile << corr2_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
+
     
     
-    double df= 1.0/LEN/DeltaT;
-    double dE = df * 2 * pi;
-    outfile.open("marcus-levich.dat");
-    for (i=0; i<nn/2; i++) outfile << sqrt(pi/a_parameter) * exp(-(dE*i*hbar-Er)*(dE*i*hbar-Er)/(4 * hbar*a_parameter))*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-    
-    outfile.open("marcus.dat");
-    for (i=0; i<nn/2; i++) outfile << sqrt(beta*pi/Er) * exp(-beta*(dE*i*hbar-Er)*(dE*i*hbar-Er)/(4 * Er))*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-*/
+
+
     
     case_count++;
     
