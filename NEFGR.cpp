@@ -13,7 +13,6 @@
 #include <cmath>
 using namespace std;
 
-
 const int bldim = 3;
 const int eldim = 3;
 double beta_list[bldim] = {0.2, 1, 5};//{0.2, 1.0, 5.0};
@@ -82,7 +81,6 @@ int main (int argc, char *argv[]) {
     string idstr("");
     string nameapp = "b5e5_";
 
-    
     int mm(0), nn(1); // nn = 2^mm is number of (complex) data to FFT
 	
 	while (nn < LEN ) {
