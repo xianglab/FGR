@@ -13,10 +13,10 @@
 #include <cmath>
 using namespace std;
 
-const int bldim = 1;
-const int eldim = 1;
-double beta_list[bldim] = {1};//{0.2, 1.0, 5.0};
-double eta_list[eldim] = {1};//{0.5, 1.0, 5.0};
+const int bldim = 3;
+const int eldim = 3;
+double beta_list[bldim] = {0.2, 1.0, 5.0};
+double eta_list[eldim] = {0.5, 1.0, 5.0};
 
 double beta = 1;//0.2;//1;//5;
 double eta = 1; //0.2;//1;//5;
@@ -25,7 +25,7 @@ double y_0 = 1; //shift of primary mode
 const double DAcoupling = 0.1;
 
 const int n_omega = 200;
-const double omega_max = 20;//15 or 20 for ohmic
+const double omega_max = 10;//15 or 20 for ohmic
 const double d_omega = omega_max / n_omega;// ~ 0.1 for ohmic
 const double d_omega_eff = omega_max / n_omega; //for effective SD sampling rate
 
@@ -251,7 +251,7 @@ int main (int argc, char *argv[]) {
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-
+     */
 
     //test cases: [2] Eq FGR Condon using discreitzed SD J_o(\omega)
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
@@ -259,8 +259,6 @@ int main (int argc, char *argv[]) {
         t = T0 + DeltaT * i;
         integ_re[0] = 0;
         integ_im[0] = 0;
-        linear_accum_re = 0;
-        linear_accum_im = 0;
         for (w = 0; w < n_omega; w++) {
             Integrand_exact(omega_nm[w], t, integ_re[w], integ_im[w]);
             integ_re[w] *= S_array[w];
@@ -279,11 +277,11 @@ int main (int argc, char *argv[]) {
         corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
     }
     
-    outfile.open("Exact_EFGR.dat");
+    outfile.open((emptystr + "Exact_EFGR_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-    */
+    
 
     
 
