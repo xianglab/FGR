@@ -17,7 +17,7 @@ const int bldim = 3;
 const int eldim = 3;
 double beta_list[bldim] = {0.2, 1, 5};//{0.2, 1.0, 5.0};
 double eta_list[eldim] = {0.5, 1, 5};//{0.2, 1.0, 5.0};
-double omega_DA_fix = 0; //fixed omega_DA, with scan tp
+double omega_DA_fix = 3; //fixed omega_DA, with scan tp
 
 double beta = 1;//0.2;//1;//5;
 double eta  = 1; //0.2;//1;//5;
@@ -79,7 +79,7 @@ int main (int argc, char *argv[]) {
     string emptystr("");
     string filename;
     string idstr("");
-    string nameapp = "b5e5_";
+    string nameapp;
 
     int mm(0), nn(1); // nn = 2^mm is number of (complex) data to FFT
 	
