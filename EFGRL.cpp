@@ -13,10 +13,10 @@
 #include <cmath>
 using namespace std;
 
-const int bldim = 3;
-const int eldim = 3;
-double beta_list[bldim] = {0.2, 1.0, 5.0};
-double eta_list[eldim] = {0.5, 1.0, 5.0};
+const int bldim = 1; // 3;
+const int eldim = 1; // 3;
+double beta_list[bldim] = {10};  //{10}; //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
+double eta_list[eldim] = {0.1};//{0.1}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
 
 double beta = 1;//0.2;//1;//5;
 double eta = 1; //0.2;//1;//5;
@@ -24,12 +24,12 @@ double Omega = 0.5; //primary mode freq
 double y_0 = 1; //shift of primary mode
 const double DAcoupling = 0.1;
 
-const int n_omega = 200;
+const int n_omega = 500; //normal cases 200, 500 for b10e0.1
 const double omega_max = 10;//15 or 20 for ohmic
 const double d_omega = omega_max / n_omega;// ~ 0.1 for ohmic
 const double d_omega_eff = omega_max / n_omega; //for effective SD sampling rate
 
-const int LEN = 512; //number of t choices 512 for ohmic
+const int LEN = 1024; //512; //number of t choices 512 for normal case, 1024 for quantum b10e0.1
 const double DeltaT = 0.2;//0.2 (LEN=512) or 0.3 (LEN=2014) for ohmic //FFT time step
 const double T0 = -DeltaT*LEN/2;
 const double pi = 3.14159265358979;
@@ -300,7 +300,7 @@ int main (int argc, char *argv[]) {
             
             Linear_exact(omega_nm[w], t, req_nm[w], linear_re, linear_im);
             linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
+            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
@@ -337,7 +337,7 @@ int main (int argc, char *argv[]) {
             
             Linear_LSC(omega_nm[w], t, req_nm[w], linear_re, linear_im);
             linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
+            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
@@ -377,7 +377,7 @@ int main (int argc, char *argv[]) {
             
             Linear_LSC(omega, t, req_eff[w], linear_re, linear_im);
             linear_accum_re += linear_re;
-            linear_accum_re += linear_im;
+            linear_accum_im += linear_im;
         }
         integral_re = Integrate(integ_re, n_omega, d_omega);
         integral_im = Integrate(integ_im, n_omega, d_omega);
@@ -418,7 +418,7 @@ int main (int argc, char *argv[]) {
             
             Linear_CAV(omega_nm[w], t, req_nm[w], linear_re, linear_im);
             linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
+            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
@@ -455,7 +455,7 @@ int main (int argc, char *argv[]) {
             
             Linear_CD(omega_nm[w], t, req_nm[w], linear_re, linear_im);
             linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
+            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
@@ -492,7 +492,7 @@ int main (int argc, char *argv[]) {
             
             Linear_W0(omega_nm[w], t, req_nm[w], linear_re, linear_im);
             linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
+            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
@@ -530,7 +530,7 @@ int main (int argc, char *argv[]) {
             
             Linear_Marcus(omega_nm[w], t, req_nm[w], linear_re, linear_im);
             linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_re += linear_im * gamma_array[w] * gamma_array[w];
+            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
