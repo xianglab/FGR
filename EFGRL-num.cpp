@@ -64,6 +64,7 @@ void force_avg(double R[], double F[], double omega[], double req[]);
 void force_donor(double R[], double F[], double omega[], double req[]);
 double DU(double R[], double omega[], double req[]);
 double DUi(double R[], double omega[], double req[], int i);
+void Linear_num_LSC(double *omega, double *r0, double *rt, double *p0, double *gm, double &re, double &im);
 int Job_finished(int &jobdone, int count, int total, int startTime);
 
 
@@ -130,11 +131,14 @@ int main (int argc, char *argv[]) {
 
     double shift = T0 / DeltaT;
     double N = nn;
-    double linear_accum_re;
-    double linear_accum_im;    long seed;
+    double linear_sum_re;
+    double linear_sum_im;
+    
+    long seed;
     seed = seedgen();	/* have seedgen compute a random seed */
     setr1279(seed);		/* seed the genertor */
     r1279(); //[0,1] random number
+    
     double linear_re;
     double linear_im;
     double temp_re;
@@ -247,23 +251,23 @@ int main (int argc, char *argv[]) {
         t = T0 + DeltaT * i;
         integ_re[0] = 0;
         integ_im[0] = 0;
-        linear_accum_re = 0;
-        linear_accum_im = 0;
+        linear_sum_re = 0;
+        linear_sum_im = 0;
         for (w = 0; w < n_omega; w++) {
             Integrand_exact(omega_nm[w], t, integ_re[w], integ_im[w]);
             integ_re[w] *= S_array[w];
             integ_im[w] *= S_array[w];
             
             Linear_exact(omega_nm[w], t, req_nm[w], linear_re, linear_im);
-            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
+            linear_sum_re += linear_re * gamma_array[w] * gamma_array[w];
+            linear_sum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
         temp_re = exp(-1 * integral_re) * cos(integral_im);
         temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
-        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
-        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
+        corr1[i] = temp_re * linear_sum_re - temp_im * linear_sum_im;
+        corr2[i] = temp_re * linear_sum_im + temp_im * linear_sum_re;
     }
     
     FFT(-1, mm, corr1, corr2);//notice its inverse FT
@@ -285,23 +289,23 @@ int main (int argc, char *argv[]) {
         t = T0 + DeltaT * i;
         integ_re[0] = 0;
         integ_im[0] = 0;
-        linear_accum_re = 0;
-        linear_accum_im = 0;
+        linear_sum_re = 0;
+        linear_sum_im = 0;
         for (w = 0; w < n_omega; w++) {
             Integrand_LSC(omega_nm[w], t, integ_re[w], integ_im[w]);
             integ_re[w] *= S_array[w];
             integ_im[w] *= S_array[w];
             
             Linear_LSC(omega_nm[w], t, req_nm[w], linear_re, linear_im);
-            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
+            linear_sum_re += linear_re * gamma_array[w] * gamma_array[w];
+            linear_sum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
         temp_re = exp(-1 * integral_re) * cos(integral_im);
         temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
-        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
-        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
+        corr1[i] = temp_re * linear_sum_re - temp_im * linear_sum_im;
+        corr2[i] = temp_re * linear_sum_im + temp_im * linear_sum_re;
     }
     
     FFT(-1, mm, corr1, corr2);//notice its inverse FT
@@ -331,6 +335,8 @@ int main (int argc, char *argv[]) {
     double V[n_omega];
     double F[n_omega];
     double *du_accum = new double [LENMD];
+    double *linear_accum_re = new double [LENMD];
+    double *linear_accum_im = new double [LENMD];
     double sigma_x[n_omega];
     double sigma_p[n_omega];
     double integral_du[LEN];
@@ -354,6 +360,7 @@ int main (int argc, char *argv[]) {
     
     
     //Begin Monte Carlo importance sampling
+    
     for (j = 0; j < MCN; j++) { //Monte Carlo phase-space integration (R,P)
         for (w = 0 ; w < n_omega; w++) {
             R0[w] = R[w] = GAUSS(&seed) * sigma_x[w];//Wigner initial conf sampling
@@ -366,20 +373,21 @@ int main (int argc, char *argv[]) {
         DT2= 0.5 * DT;
         
         //NMD = NMD_forward;
-        
-        du0 = DU(R0, omega_array, req);
+
         
         //dynamics on average surface
         //wigner sampling
-        force_avg(R, F, omega_array, req);
-        for (tau = 0 ; tau< NMD; tau++) {
+        force_avg(R, F, omega_nm, req_nm);
+        for (tau = 0 ; tau < NMD; tau++) {
             //record DU every DT: DU is sum of all frequencies
-            du_accum[tau] = DU(R, omega_array, req);
-            if (tau%STEPS == 0) {
-                cuu[tau/STEPS] += du0 * du_accum[tau]; //noneq cuu avg
-            }
+            du_accum[tau] = DU(R, omega_nm, req_nm);
+            // linear factor
+            Linear_num_LSC(omega_nm, R0, R, P0, gamma_array, linear_re, linear_im);
+            linear_accum_re[tau] = linear_re;
+            linear_accum_im[tau] = linear_im;
+            
             MOVEA(R, V, F);
-            force_avg(R, F, omega_array, req);
+            force_avg(R, F, omega_nm, req_nm);
             MOVEB(V, F);
         }
         
@@ -387,8 +395,9 @@ int main (int argc, char *argv[]) {
             if (t_array[i] >= 0) {
                 MDlen = static_cast<int>(abs(t_array[i] / DT));
                 integral_du[i] = Integrate(du_accum, MDlen, DT); //check ABSDT or DT?
-                mc_re[i] += cos(integral_du[i]/hbar);
-                mc_im[i] += sin(integral_du[i]/hbar);
+                //new for EFGRL
+                mc_re[i] += cos(integral_du[i]/hbar) * linear_accum_re[i] - sin(integral_du[i]/hbar) * linear_accum_im[i];
+                mc_im[i] += sin(integral_du[i]/hbar) * linear_accum_re[i] + cos(integral_du[i]/hbar) * linear_accum_im[i];
             }
         }
         
@@ -405,12 +414,17 @@ int main (int argc, char *argv[]) {
         
         //dynamics on average surface
         //wigner sampling
-        force_avg(R, F, omega_array, req);
+        force_avg(R, F, omega_nm, req_nm);
         for (tau = 0 ; tau< NMD; tau++) {
             //record DU every DT: DU is sum of all frequencies
-            du_accum[tau] = DU(R, omega_array, req);
+            du_accum[tau] = DU(R, omega_nm, req_nm);
+            //lnear factor
+            Linear_num_LSC(omega_nm, R0, R, P0, gamma_array, linear_re, linear_im);
+            linear_accum_re[tau] = linear_re;
+            linear_accum_im[tau] = linear_im;
+
             MOVEA(R, V, F);
-            force_avg(R, F, omega_array, req);
+            force_avg(R, F, omega_nm, req_nm);
             MOVEB(V, F);
         }
         
@@ -418,8 +432,8 @@ int main (int argc, char *argv[]) {
             if (t_array[i] < 0) {
                 MDlen = static_cast<int>(abs(t_array[i]/ DT)); // MDlen should >= 0
                 integral_du[i] = Integrate(du_accum, MDlen, DT); //check ABSDT or DT?
-                mc_re[i] += cos(integral_du[i]/hbar);
-                mc_im[i] += sin(integral_du[i]/hbar);
+                mc_re[i] += cos(integral_du[i]/hbar) * linear_accum_re[i] - sin(integral_du[i]/hbar) * linear_accum_im[i];
+                mc_im[i] += sin(integral_du[i]/hbar) * linear_accum_re[i] + cos(integral_du[i]/hbar) * linear_accum_im[i];
             }
         }
         Job_finished(jobdone, j, MCN);
@@ -578,9 +592,10 @@ void Linear_Marcus(double omega, double t, double req, double &re, double &im) {
   im = 0;
   return;
 }
+
                                                           
 double Integrate(double *data, int n, double dx){
-    double I =0;
+    double I = 0;
     I += (data[0]+data[n-1]);//  /2;
     for (int i=1; i< n-1; i++) {
         I += data[i];
@@ -785,7 +800,7 @@ void force_donor(double R[], double F[], double omega[], double req[]) {
 
 double DU(double R[], double omega[], double req[]) {
     double du=0;
-    for (int i=1; i<N; i++) du += req[i]*omega[i]*omega[i]*R[i]-0.5*req[i]*req[i]*omega[i]*omega[i];
+    for (int i=0; i<N; i++) du += req[i]*omega[i]*omega[i]*R[i]-0.5*req[i]*req[i]*omega[i]*omega[i];
     return du;
 }
 
@@ -793,6 +808,16 @@ double DUi(double R[], double omega[], double req[], int i) {
     double du=0;
     du = req[i]*omega[i]*omega[i]*R[i]-0.5*req[i]*req[i]*omega[i]*omega[i];
     return du;
+}
+
+void Linear_num_LSC(double *omega, double *r0, double *rt, double *p0, double *gm, double &re, double &im) {
+    int i;
+    re = im = 0;
+    for (i = 0; i< N ; i++) {
+        re += gm[i] *gm[i] * rt[i] * r0[i];
+        im -= gm[i] *gm[i] * rt[i] * p0[i] / omega[i] * tanh(beta*hbar*omega[i]*0.5);
+    }
+    return;
 }
 
 int Job_finished(int &jobdone, int count, int total, int startTime) {
