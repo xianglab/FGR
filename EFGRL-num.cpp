@@ -455,10 +455,6 @@ int main (int argc, char *argv[]) {
     outfile.clear();
     
 
-    
-
-    
-    
     cout << "-------------------" << endl;
     cout << "DeltaT = " << DeltaT << endl;
     cout << "N = " << LEN << endl;

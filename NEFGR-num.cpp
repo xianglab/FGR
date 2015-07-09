@@ -1,5 +1,5 @@
 /* This code calculates Non-equilibrium Fermi Golden Rule rate 
-   in Condon and non-Condon cases, Brownian oscillator model
+   in Condon case using Brownian oscillator model
    compare with linearized semiclassical methods  
    To compile: g++ -o NEFGR-num NEFGR-num.cpp -llapack -lrefblas -lgfortran
    (c) Xiang Sun 2015  */
@@ -731,7 +731,7 @@ int Job_finished(int &jobdone, int count, int total, int startTime) {
     if ( tenpercent > jobdone ) {
         jobdone = tenpercent;
         currentTime = time(NULL);
-        cout << "Job finished "<< jobdone <<"0 %. (Time elapsed " << currentTime - startTime << " s.)" << endl;
+        cout << "Job finished "<< jobdone <<"0 %. Time elapsed " << currentTime - startTime << " sec." << endl;
     }
     return tenpercent;
 }

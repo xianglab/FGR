@@ -1,7 +1,7 @@
 /* This code calculates Non-equilibrium Fermi Golden Rule rate 
-   in Condon and non-Condon case, Brownian oscillator model 
+   in Condon case using Brownian oscillator model 
    compare with linearized semiclassical methods  
-   To compile: g++ -o EFGRL EFGRL.cpp -llapack -lrefblas -lgfortran
+   To compile: g++ -o NEFGR NEFGR.cpp -llapack -lrefblas -lgfortran
    (c) Xiang Sun 2015
  */
 
