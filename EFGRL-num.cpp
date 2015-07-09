@@ -37,6 +37,7 @@ const double hbar = 1;
 double DTSQ2 = DT * DT * 0.5;
 double DT2 = DT/2.0;
 double ABSDT= abs(DT);
+const int N = n_omega; //degrees of freedom
 
 void FFT(int dir, int m, double *x, double *y); //Fast Fourier Transform, 2^m data
 double S_omega_ohmic(double omega, double eta); //S(omega) spectral density
@@ -77,6 +78,7 @@ extern "C" {
 
 int main (int argc, char *argv[]) {
     
+    int id;
     stringstream ss;
     string emptystr("");
     string nameapp("");
@@ -177,11 +179,6 @@ int main (int argc, char *argv[]) {
     int startTime;
     startTime = time(NULL);
     
-    long seed;
-    seed = seedgen();	/* have seedgen compute a random seed */
-    setr1279(seed);		/* seed the genertor */
-    r1279(); //[0,1] random number
-    
     
     //------- setting up spectral density ----------
     for (w = 0; w < n_omega; w++) SD[w] = S_omega_ohmic(w*d_omega, eta);
@@ -245,7 +242,7 @@ int main (int argc, char *argv[]) {
 
     
     /*
-    //[A] exact quantum EFGR Linear coupling with discrete normal modes
+    //[A] analytical: exact quantum EFGR Linear coupling with discrete normal modes
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
@@ -281,9 +278,9 @@ int main (int argc, char *argv[]) {
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-    */
+    
 
-    //[B] LSC approximation using normal modes
+    //[B] analytical: LSC approximation using normal modes
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
@@ -319,9 +316,9 @@ int main (int argc, char *argv[]) {
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-
+     */
     
-    // LSC approximation (numerical)
+    // [C] numerical: LSC approximation of EFGRL
     int MDlen;
     int tau;
     int LENMD = static_cast<int>(LEN*DeltaT/DT); //number of steps for MD
@@ -337,8 +334,8 @@ int main (int argc, char *argv[]) {
     double *du_accum = new double [LENMD];
     double *linear_accum_re = new double [LENMD];
     double *linear_accum_im = new double [LENMD];
-    double sigma_x[n_omega];
-    double sigma_p[n_omega];
+    double sigma_x[n_omega];//standard deviation of position
+    double sigma_p[n_omega];//standard deviation of velocity
     double integral_du[LEN];
     double t_array[LEN];  // FFT time variable t = T0, T0+DeltaT...
     
@@ -348,7 +345,7 @@ int main (int argc, char *argv[]) {
         sigma_p[w] = sigma_x[w] * omega_nm[w];
     }
 
-    for (i=0; i < LEN; i++) {//prepare FFT time variable
+    for (i = 0; i < LEN; i++) {//prepare FFT time array
         t_array[i] = T0 + DeltaT * i;
         mc_re[i] = mc_im[i] = 0;
     }
@@ -367,22 +364,19 @@ int main (int argc, char *argv[]) {
             V0[w] = V[w] = GAUSS(&seed) * sigma_p[w];//Wigner initial momentum sampling
         }
         
-        //Forward MD propagation
+        // --->>> Forward MD propagation
         if (t_array[LEN-1] < 0) DT = - ABSDT; //for MD propagation direction
         else DT = ABSDT;
         DT2= 0.5 * DT;
-        
         //NMD = NMD_forward;
 
-        
-        //dynamics on average surface
-        //wigner sampling
+        //dynamics on average surface + wigner sampling
         force_avg(R, F, omega_nm, req_nm);
         for (tau = 0 ; tau < NMD; tau++) {
             //record DU every DT: DU is sum of all frequencies
             du_accum[tau] = DU(R, omega_nm, req_nm);
             // linear factor
-            Linear_num_LSC(omega_nm, R0, R, P0, gamma_array, linear_re, linear_im);
+            Linear_num_LSC(omega_nm, R0, R, V0, gamma_array, linear_re, linear_im);
             linear_accum_re[tau] = linear_re;
             linear_accum_im[tau] = linear_im;
             
@@ -394,14 +388,14 @@ int main (int argc, char *argv[]) {
         for (i = 0; i < LEN; i++) {
             if (t_array[i] >= 0) {
                 MDlen = static_cast<int>(abs(t_array[i] / DT));
-                integral_du[i] = Integrate(du_accum, MDlen, DT); //check ABSDT or DT?
+                integral_du[i] = Integrate(du_accum, MDlen, DT); //notice sign of DT
                 //new for EFGRL
                 mc_re[i] += cos(integral_du[i]/hbar) * linear_accum_re[i] - sin(integral_du[i]/hbar) * linear_accum_im[i];
                 mc_im[i] += sin(integral_du[i]/hbar) * linear_accum_re[i] + cos(integral_du[i]/hbar) * linear_accum_im[i];
             }
         }
         
-        //Backward MD propagation
+        // ---<<< Backward MD propagation
         for (w = 0; w < n_omega; w++) {
             R[w] = R0[w]; //restore initial condition
             V[w] = V0[w];
@@ -409,17 +403,15 @@ int main (int argc, char *argv[]) {
         if (t_array[0] < 0) DT = - ABSDT; //for MD propagation direction
         else DT = ABSDT;
         DT2= 0.5 * DT;
-        //NMD = static_cast<int>(abs(t_array[0]/DT)); //>0
         //NMD = NMD_backward;
         
-        //dynamics on average surface
-        //wigner sampling
+        //dynamics on average surface + wigner sampling
         force_avg(R, F, omega_nm, req_nm);
         for (tau = 0 ; tau< NMD; tau++) {
             //record DU every DT: DU is sum of all frequencies
             du_accum[tau] = DU(R, omega_nm, req_nm);
-            //lnear factor
-            Linear_num_LSC(omega_nm, R0, R, P0, gamma_array, linear_re, linear_im);
+            //linear factor
+            Linear_num_LSC(omega_nm, R0, R, V0, gamma_array, linear_re, linear_im);
             linear_accum_re[tau] = linear_re;
             linear_accum_im[tau] = linear_im;
 
@@ -431,12 +423,12 @@ int main (int argc, char *argv[]) {
         for (i = 0; i < LEN; i++) {
             if (t_array[i] < 0) {
                 MDlen = static_cast<int>(abs(t_array[i]/ DT)); // MDlen should >= 0
-                integral_du[i] = Integrate(du_accum, MDlen, DT); //check ABSDT or DT?
+                integral_du[i] = Integrate(du_accum, MDlen, DT); //notice sign of DT
                 mc_re[i] += cos(integral_du[i]/hbar) * linear_accum_re[i] - sin(integral_du[i]/hbar) * linear_accum_im[i];
                 mc_im[i] += sin(integral_du[i]/hbar) * linear_accum_re[i] + cos(integral_du[i]/hbar) * linear_accum_im[i];
             }
         }
-        Job_finished(jobdone, j, MCN);
+        Job_finished(jobdone, j, MCN, startTime);
     }
     
     
@@ -596,8 +588,7 @@ void Linear_Marcus(double omega, double t, double req, double &re, double &im) {
                                                           
 double Integrate(double *data, int n, double dx){
     double I = 0;
-    I += (data[0]+data[n-1]);//  /2;
-    for (int i=1; i< n-1; i++) {
+    for (int i = 0; i < n; i++) {
         I += data[i];
     }
     I *= dx;
@@ -606,7 +597,7 @@ double Integrate(double *data, int n, double dx){
 
 double Sum(double *data, int n){
     double I = 0;
-    for (int i=0; i< n; i++) {
+    for (int i = 0; i < n; i++) {
         I += data[i];
     }
     return I;
@@ -764,7 +755,7 @@ double GAUSS(long *seed) {
 // SUROUTINE TO PERFORM VELOCITY VERLET ALGORITHM
 void MOVEA(double R[], double V[], double F[]) {
     double xx;
-    for (int i=1; i<N; i++) {
+    for (int i = 0; i < N; i++) {
         xx = R[i] + DT*V[i] + DTSQ2*F[i];
         //pbc(xx, yy, zz);
         R[i] = xx;
@@ -776,7 +767,7 @@ void MOVEA(double R[], double V[], double F[]) {
 
 void MOVEB(double V[], double F[]) {
     //always call MOVEB after call force** to update force F[]
-    for (int i=1; i<N; i++) {
+    for (int i = 0; i < N; i++) {
         V[i] += DT2*F[i];
     }
     return;
@@ -784,7 +775,7 @@ void MOVEB(double V[], double F[]) {
 
 void force_avg(double R[], double F[], double omega[], double req[]) {
     //avg harmonic oscillator potential
-    for (int i=1; i<N; i++) {
+    for (int i = 0; i < N; i++) {
         F[i] = - omega[i] * omega[i] * (R[i]- req[i] * 0.5);
     }
     return;
@@ -792,27 +783,28 @@ void force_avg(double R[], double F[], double omega[], double req[]) {
 
 void force_donor(double R[], double F[], double omega[], double req[]) {
     //donor harmonic oscillator potential
-    for (int i=1; i<N; i++) {
+    for (int i = 0; i < N; i++) {
         F[i] = - omega[i] * omega[i] * R[i];
     }
     return;
 }
 
 double DU(double R[], double omega[], double req[]) {
-    double du=0;
-    for (int i=0; i<N; i++) du += req[i]*omega[i]*omega[i]*R[i]-0.5*req[i]*req[i]*omega[i]*omega[i];
+    double du = 0;
+    for (int i = 0; i < N; i++) du += req[i]*omega[i]*omega[i]*R[i]-0.5*req[i]*req[i]*omega[i]*omega[i];
     return du;
 }
 
 double DUi(double R[], double omega[], double req[], int i) {
-    double du=0;
+    double du = 0;
     du = req[i]*omega[i]*omega[i]*R[i]-0.5*req[i]*req[i]*omega[i]*omega[i];
     return du;
 }
 
 void Linear_num_LSC(double *omega, double *r0, double *rt, double *p0, double *gm, double &re, double &im) {
     int i;
-    re = im = 0;
+    re = 0;
+    im = 0;
     for (i = 0; i< N ; i++) {
         re += gm[i] *gm[i] * rt[i] * r0[i];
         im -= gm[i] *gm[i] * rt[i] * p0[i] / omega[i] * tanh(beta*hbar*omega[i]*0.5);
