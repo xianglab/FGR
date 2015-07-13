@@ -1,5 +1,5 @@
 /* This code calculates Non-equilibrium Fermi Golden Rule rate 
-   in Condon and non-Condon cases, Brownian oscillator model
+   in Condon case using Brownian oscillator model
    compare with linearized semiclassical methods  
    To compile: g++ -o NEFGR-num NEFGR-num.cpp -llapack -lrefblas -lgfortran
    (c) Xiang Sun 2015  */
@@ -17,19 +17,18 @@ using namespace std;
 //*********** change parameter *********
 const double beta = 1; //3;
 const double eta = 1;  //3;
-double omega_DA_fix = 2; //fixed omega_DA, with scan tp
+double omega_DA_fix = 3; //fixed omega_DA, with scan tp
 double s = 1;    //Noneq. initial shift of parimary mode
-const int MCN = 5000;//50000; //Monte Carlo sample rate
+double Omega = 0.5; //primary mode freq
+const int MCN = 20000;//50000; //Monte Carlo sample rate
 //*********** **************** *********
 
 //double tp_fix = 5; //fixed t' for noneq FGR rate k(t',omega_DA) with scan omega_DA
-const double DAcoupling = 0.1;
-const double DeltaTau =0.002; //time slice for t' griding
-const double tp_max = 20; //scanning tp option, DeltaTau as step
-const double Deltatp = 0.2;
-
-double Omega = 0.5; //primary mode freq
 double y_0 = 1; //shift of primary mode
+const double DAcoupling = 0.1;
+const double tp_max = 20; //scanning tp option, DeltaTau as step
+const double Deltatp = 0.2; //time step for tp (0 ~ tp_max)
+const double DeltaTau =0.002; //time slice for t' griding
 
 const int n_omega = 100;
 const int N = n_omega; //system degrees of freedom
@@ -364,7 +363,7 @@ int main (int argc, char *argv[]) {
                     //record DU every DT: DU is sum of all frequencies
                     du_accum[a] = DU(Rav, omega_nm, req_nm);
                 }
-                sum_du += Sum(du_accum, NMD_AV) * ABSDT * -1;//+ or - check sign
+                sum_du += Sum(du_accum, NMD_AV) * ABSDT;//check sign
                 C_re_accum[tp_index][m] += cos(sum_du / hbar);
                 C_im_accum[tp_index][m] += sin(sum_du / hbar);
 
@@ -732,7 +731,7 @@ int Job_finished(int &jobdone, int count, int total, int startTime) {
     if ( tenpercent > jobdone ) {
         jobdone = tenpercent;
         currentTime = time(NULL);
-        cout << "Job finished "<< jobdone <<"0 %. (Time elapsed " << currentTime - startTime << " s.)" << endl;
+        cout << "Job finished "<< jobdone <<"0 %. Time elapsed " << currentTime - startTime << " sec." << endl;
     }
     return tenpercent;
 }

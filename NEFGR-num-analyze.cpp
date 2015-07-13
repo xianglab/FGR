@@ -16,12 +16,12 @@ using namespace std;
 
 //*********** change parameter *********
 string filename = "num_LSC_NEFGR_C_";
-const int NFILE = 100;
+const int NFILE = 50;
 const int MINFILE = 1;
-const int MCN = 5000;//50000; //Monte Carlo sample rate
+const int MCN = 20000;//50000; //Monte Carlo sample rate
 const double beta = 1; //3;
 const double eta = 1;  //3;
-double omega_DA_fix = 2; //fixed omega_DA, with scan tp
+double omega_DA_fix = 3; //fixed omega_DA, with scan tp
 double s = 1;    //Noneq. initial shift of parimary mode
 double Omega = 0.5;
 //*********** **************** *********
@@ -150,45 +150,6 @@ int main (int argc, char *argv[]) {
     outfile1.close();
     outfile1.clear();
     
-    /*
-     //-------------- analytical NEFGR  ---------------
-     outfile.open((emptystr+"ana_LSC_NEFGR_"+nameapp+".dat").c_str());
-     outfile1.open((emptystr+"ana_LSC_P_NEFGR_"+nameapp+".dat").c_str());
-     double sum=0;
-     double kneq=0;
-     double kre, kim;
-     for (tp = 0; tp < tp_max; tp += Deltatp) {
-     kre = kim = 0;
-     M = static_cast<int> (tp/DeltaTau);
-     for (m=0; m<M; m++) {//tau index
-     tau = m * DeltaTau;
-     integ_re[0] = 0;
-     integ_im[0] = 0;
-     for (w = 0; w < n_omega; w++) {
-     Integrand_NE_exact(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]);
-     }
-     integral_re = Sum(integ_re, n_omega);// *DeltaTau;
-     integral_im = Sum(integ_im, n_omega);// *DeltaTau;
-     temp_re = exp(-1 * integral_re) * cos(integral_im);
-     temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
-     kre += temp_re * cos(omega_DA*tau) - temp_im * sin(omega_DA*tau);
-     kim += temp_re * sin(omega_DA*tau) + temp_im * cos(omega_DA*tau);
-     }
-     kre *= DeltaTau;
-     kim *= DeltaTau;
-     kneq = kre*2*DAcoupling*DAcoupling;
-     outfile << kneq << endl;
-     sum += kneq * Deltatp;//probability of donor state
-     //outfile1 << 1 - sum << endl; //1 - int dt' k(t')
-     outfile1 << exp(-1*sum) << endl; //P = exp(- int dt' k(t'))
-     }
-     outfile.close();
-     outfile.clear();
-     
-     outfile1.close();
-     outfile1.clear();
-     //-------------- END. analytical NEFGR  ---------------
-     */
     
     cout << "   Parameters: " << endl;
     cout << "       beta = " << beta << endl;

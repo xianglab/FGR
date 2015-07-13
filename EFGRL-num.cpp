@@ -1,8 +1,7 @@
 /* This code calculates Fermi Golden Rule rate with linear coupling (non-Condon)
     using multiple harmonic oscillator model, under different approximation levels
+    numerically with Monte Carlo importance sampling
     (c) Xiang Sun 2015
- 
-    EFGRL.cpp uses the J_eff omega=(w+1)*d_omega_eff instead of w*d_omega_eff (as in EFGRL2.cpp)
  */
 
 #include <iostream>
@@ -11,30 +10,34 @@
 #include <sstream>
 #include <iomanip>
 #include <cmath>
+#include "r_1279.h"  // r1279 random number generator
 using namespace std;
 
-const int bldim = 1; // 3;
-const int eldim = 1; // 3;
-double beta_list[bldim] = {10};  //{10}; //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
-double eta_list[eldim] = {0.1};//{0.1}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
-
+//*********** change parameter *********
+const int MCN = 50000;//Monte Carlo sampling rate
 double beta = 1;//0.2;//1;//5;
 double eta = 1; //0.2;//1;//5;
 double Omega = 0.5; //primary mode freq
+const int n_omega = 200; //normal cases 200
+const double omega_max = 10;//15 or 20 for ohmic
+double DT=0.002; //MD time step
+//*********** **************** *********
+
 double y_0 = 1; //shift of primary mode
 const double DAcoupling = 0.1;
-
-const int n_omega = 500; //normal cases 200, 500 for b10e0.1
-const double omega_max = 10;//15 or 20 for ohmic
 const double d_omega = omega_max / n_omega;// ~ 0.1 for ohmic
 const double d_omega_eff = omega_max / n_omega; //for effective SD sampling rate
 
-const int LEN = 1024; //512; //number of t choices 512 for normal case, 1024 for quantum b10e0.1
+const int LEN = 512; //number of t choices 512 for normal case
 const double DeltaT = 0.2;//0.2 (LEN=512) or 0.3 (LEN=2014) for ohmic //FFT time step
 const double T0 = -DeltaT*LEN/2;
 const double pi = 3.14159265358979;
 const double RT_2PI= sqrt(2*pi);
 const double hbar = 1;
+double DTSQ2 = DT * DT * 0.5;
+double DT2 = DT/2.0;
+double ABSDT= abs(DT);
+const int N = n_omega; //degrees of freedom
 
 void FFT(int dir, int m, double *x, double *y); //Fast Fourier Transform, 2^m data
 double S_omega_ohmic(double omega, double eta); //S(omega) spectral density
@@ -55,6 +58,15 @@ void Linear_Marcus(double omega, double t, double req, double &re, double &im);
 double Integrate(double *data, int n, double dx);
 double Sum(double *data, int n);
 double** Create_matrix(int row, int col);
+double GAUSS(long *seed);
+void MOVEA(double R[], double V[], double F[]);
+void MOVEB(double V[], double F[]);
+void force_avg(double R[], double F[], double omega[], double req[]);
+void force_donor(double R[], double F[], double omega[], double req[]);
+double DU(double R[], double omega[], double req[]);
+double DUi(double R[], double omega[], double req[], int i);
+void Linear_num_LSC(double *omega, double *r0, double *rt, double *p0, double *gm, double &re, double &im);
+int Job_finished(int &jobdone, int count, int total, int startTime);
 
 
 extern "C" {
@@ -66,11 +78,28 @@ extern "C" {
 
 int main (int argc, char *argv[]) {
     
+    int id;
     stringstream ss;
     string emptystr("");
     string nameapp("");
     string filename;
     string idstr("");
+    
+    //cout << "# of argument: " << argc-1 << endl;
+    if (argc > 1) {
+        ss << argv[1];
+        idstr += ss.str();
+        ss >> id;
+        ss.clear();
+    }
+    
+    ss.str("");
+    nameapp = "";
+    ss << "b" << beta;
+    ss << "e" << eta;
+    nameapp = ss.str();
+    
+    cout << ">>> Start Job id # " << id << " of num EFGRL in non-Condon case." << endl;
 
     int mm(0), nn(1); // nn = 2^mm is number of (complex) data to FFT
 	
@@ -104,8 +133,14 @@ int main (int argc, char *argv[]) {
 
     double shift = T0 / DeltaT;
     double N = nn;
-    double linear_accum_re;
-    double linear_accum_im;
+    double linear_sum_re;
+    double linear_sum_im;
+    
+    long seed;
+    seed = seedgen();	/* have seedgen compute a random seed */
+    setr1279(seed);		/* seed the genertor */
+    r1279(); //[0,1] random number
+    
     double linear_re;
     double linear_im;
     double temp_re;
@@ -140,25 +175,10 @@ int main (int argc, char *argv[]) {
     double c_bath[n_omega]; //secondary bath mode min shift coefficients
     double gamma_array[n_omega]; //linear coupling coefficient
 
-    int beta_index(0);
-    int eta_index(0);
+    int jobdone(0);
+    int startTime;
+    startTime = time(NULL);
     
-    cout << "--------- EFGRL in non-Condon case --------" << endl;
-    
-    //BEGIN loop through thermal conditions
-    int case_count(0);
-    for (beta_index = 0; beta_index < bldim; beta_index++)
-        for (eta_index = 0; eta_index < eldim; eta_index++)
-    {
-        beta = beta_list[beta_index];
-        eta = eta_list[eta_index];
-        ss.str("");
-        nameapp = "";
-        ss << "b" << beta;
-        ss << "e" << eta;
-        nameapp = ss.str();
-
-            
     
     //------- setting up spectral density ----------
     for (w = 0; w < n_omega; w++) SD[w] = S_omega_ohmic(w*d_omega, eta);
@@ -219,95 +239,32 @@ int main (int argc, char *argv[]) {
     cout << "Er (normal mode) = " << Er << endl;
     cout << "a_parameter (normal mode) = "<< a_parameter << endl;
     
+
+    
     /*
-    //test cases: [1] Eq FGR Condon using continuous SD J_eff(\omega)
-    //Exact or LSC approximation
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
-    for (i = 0; i < LEN; i++) {
-        t = T0 + DeltaT * i;
-        integ_re[0] =0;
-        integ_im[0] =0;
-        for (w = 0; w < n_omega; w++) {
-            omega = (w+1) * d_omega_eff;
-            Integrand_LSC(omega, t, integ_re[w], integ_im[w]);
-            integ_re[w] *= 4*J_eff[w]/pi/(omega*omega);
-            integ_im[w] *= 4*J_eff[w]/pi/(omega*omega);
-        }
-        integral_re = Integrate(integ_re, n_omega, d_omega);
-        integral_im = Integrate(integ_im, n_omega, d_omega);
-        
-        corr1[i] = exp(-1 * integral_re) * cos(integral_im);
-        corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
-    }
-    
-    FFT(-1, mm, corr1, corr2);//notice its inverse FT
-    
-    for(i=0; i<nn; i++) { //shift time origin
-        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
-        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
-    }
-   
-    outfile.open("Exact_EFGR_Jeff.dat");
-    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-     */
-
-    //test cases: [2] Eq FGR Condon using discreitzed SD J_o(\omega)
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
-    for (i = 0; i < LEN; i++) {
-        t = T0 + DeltaT * i;
-        integ_re[0] = 0;
-        integ_im[0] = 0;
-        for (w = 0; w < n_omega; w++) {
-            Integrand_exact(omega_nm[w], t, integ_re[w], integ_im[w]);
-            integ_re[w] *= S_array[w];
-            integ_im[w] *= S_array[w];
-        }
-        integral_re = Sum(integ_re, n_omega);
-        integral_im = Sum(integ_im, n_omega);
-        corr1[i] = exp(-1 * integral_re) * cos(integral_im);
-        corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
-    }
-    
-    FFT(-1, mm, corr1, corr2);//notice its inverse FT
-    
-    for(i=0; i<nn; i++) { //shift time origin
-        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
-        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
-    }
-    
-    outfile.open((emptystr + "Exact_EFGR_" + nameapp + ".dat").c_str());
-    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-    
-
-    
-
-    //[A] exact quantum EFGR Linear coupling with discrete normal modes
+    //[A] analytical: exact quantum EFGR Linear coupling with discrete normal modes
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
         integ_re[0] = 0;
         integ_im[0] = 0;
-        linear_accum_re = 0;
-        linear_accum_im = 0;
+        linear_sum_re = 0;
+        linear_sum_im = 0;
         for (w = 0; w < n_omega; w++) {
             Integrand_exact(omega_nm[w], t, integ_re[w], integ_im[w]);
             integ_re[w] *= S_array[w];
             integ_im[w] *= S_array[w];
             
             Linear_exact(omega_nm[w], t, req_nm[w], linear_re, linear_im);
-            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
+            linear_sum_re += linear_re * gamma_array[w] * gamma_array[w];
+            linear_sum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
         temp_re = exp(-1 * integral_re) * cos(integral_im);
         temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
-        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
-        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
+        corr1[i] = temp_re * linear_sum_re - temp_im * linear_sum_im;
+        corr2[i] = temp_re * linear_sum_im + temp_im * linear_sum_re;
     }
     
     FFT(-1, mm, corr1, corr2);//notice its inverse FT
@@ -321,30 +278,31 @@ int main (int argc, char *argv[]) {
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
+    
 
-    //[B] LSC approximation using normal modes
+    //[B] analytical: LSC approximation using normal modes
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
         integ_re[0] = 0;
         integ_im[0] = 0;
-        linear_accum_re = 0;
-        linear_accum_im = 0;
+        linear_sum_re = 0;
+        linear_sum_im = 0;
         for (w = 0; w < n_omega; w++) {
             Integrand_LSC(omega_nm[w], t, integ_re[w], integ_im[w]);
             integ_re[w] *= S_array[w];
             integ_im[w] *= S_array[w];
             
             Linear_LSC(omega_nm[w], t, req_nm[w], linear_re, linear_im);
-            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
+            linear_sum_re += linear_re * gamma_array[w] * gamma_array[w];
+            linear_sum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
         integral_re = Sum(integ_re, n_omega);
         integral_im = Sum(integ_im, n_omega);
         temp_re = exp(-1 * integral_re) * cos(integral_im);
         temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
-        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
-        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
+        corr1[i] = temp_re * linear_sum_re - temp_im * linear_sum_im;
+        corr2[i] = temp_re * linear_sum_im + temp_im * linear_sum_re;
     }
     
     FFT(-1, mm, corr1, corr2);//notice its inverse FT
@@ -356,273 +314,148 @@ int main (int argc, char *argv[]) {
     
     outfile.open((emptystr + "LSC_EFGRL_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-        
-    /*
-    //[B] LSC approximation using S(omega) ohmic??
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
-    for (i = 0; i < LEN; i++) {
-        t = T0 + DeltaT * i;
-        integ_re[0] =0;
-        integ_im[0] =0;
-        linear_accum_re = 0;
-        linear_accum_im = 0;
-        for (w = 1; w < n_omega; w++) {
-            omega = w * d_omega;
-            
-            Integrand_LSC(omega, t, integ_re[w], integ_im[w]);
-            integ_re[w] *= SD[w];
-            integ_im[w] *= SD[w];
-            
-            Linear_LSC(omega, t, req_eff[w], linear_re, linear_im);
-            linear_accum_re += linear_re;
-            linear_accum_im += linear_im;
-        }
-        integral_re = Integrate(integ_re, n_omega, d_omega);
-        integral_im = Integrate(integ_im, n_omega, d_omega);
-        temp_re = exp(-1 * integral_re) * cos(integral_im);
-        temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
-        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
-        corr2[i] = temp_re * linear_accum_im + temp_re * linear_accum_im;
-    }
-    
-    FFT(-1, mm, corr1, corr2);//notice its inverse FT
-
-    for(i=0; i<nn; i++) { //shift time origin 
-        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
-        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
-    }
- 
-    
-    outfile.open((emptystr + "LSC_EFGRL_" + nameapp + ".dat").c_str());
-    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    
     outfile.close();
     outfile.clear();
      */
     
+    // [C] numerical: LSC approximation of EFGRL
+    int MDlen;
+    int tau;
+    int LENMD = static_cast<int>(LEN*DeltaT/DT); //number of steps for MD
+    int NMD;
     
-    //[C] C-AV approximation using normal modes
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
-    for (i = 0; i < LEN; i++) {
-        t = T0 + DeltaT * i;
-        integ_re[0] = 0;
-        integ_im[0] = 0;
-        linear_accum_re = 0;
-        linear_accum_im = 0;
-        for (w = 0; w < n_omega; w++) {
-            Integrand_CAV(omega_nm[w], t, integ_re[w], integ_im[w]);
-            integ_re[w] *= S_array[w];
-            integ_im[w] *= S_array[w];
-            
-            Linear_CAV(omega_nm[w], t, req_nm[w], linear_re, linear_im);
-            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
+    double mc_re[LEN];
+    double mc_im[LEN];
+    double R0[n_omega];//wigner initial sampling
+    double V0[n_omega];
+    double R[n_omega]; //avg dynamics w/ wigner sampling (LSC)
+    double V[n_omega];
+    double F[n_omega];
+    double *du_accum = new double [LENMD];
+    double *linear_accum_re = new double [LENMD];
+    double *linear_accum_im = new double [LENMD];
+    double sigma_x[n_omega];//standard deviation of position
+    double sigma_p[n_omega];//standard deviation of velocity
+    double integral_du[LEN];
+    double t_array[LEN];  // FFT time variable t = T0, T0+DeltaT...
+    
+    //set standard deviation of initial sampling
+    for (w = 0; w < n_omega; w++) {// (1/pi*h)^n Prod_omega tanh(beta*hbar*omega/2)
+        sigma_x[w] = sqrt(hbar/(2*omega_nm[w]*tanh(0.5*beta*hbar*omega_nm[w])));
+        sigma_p[w] = sigma_x[w] * omega_nm[w];
+    }
+
+    for (i = 0; i < LEN; i++) {//prepare FFT time array
+        t_array[i] = T0 + DeltaT * i;
+        mc_re[i] = mc_im[i] = 0;
+    }
+    
+    int NMD_forward = static_cast<int>(abs(t_array[LEN-1]/DT));
+    int NMD_backward = static_cast<int>(abs(t_array[0]/DT));
+    if(NMD_forward > NMD_backward) NMD = NMD_forward; //get max of NMD_forward and NMD_backward
+    else NMD = NMD_backward;
+    
+    
+    //Begin Monte Carlo importance sampling
+    
+    for (j = 0; j < MCN; j++) { //Monte Carlo phase-space integration (R,P)
+        for (w = 0 ; w < n_omega; w++) {
+            R0[w] = R[w] = GAUSS(&seed) * sigma_x[w];//Wigner initial conf sampling
+            V0[w] = V[w] = GAUSS(&seed) * sigma_p[w];//Wigner initial momentum sampling
         }
-        integral_re = Sum(integ_re, n_omega);
-        integral_im = Sum(integ_im, n_omega);
-        temp_re = exp(-1 * integral_re) * cos(integral_im);
-        temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
-        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
-        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
+        
+        // --->>> Forward MD propagation
+        if (t_array[LEN-1] < 0) DT = - ABSDT; //for MD propagation direction
+        else DT = ABSDT;
+        DT2= 0.5 * DT;
+        //NMD = NMD_forward;
+
+        //dynamics on average surface + wigner sampling
+        force_avg(R, F, omega_nm, req_nm);
+        for (tau = 0 ; tau < NMD; tau++) {
+            //record DU every DT: DU is sum of all frequencies
+            du_accum[tau] = DU(R, omega_nm, req_nm);
+            // linear factor
+            Linear_num_LSC(omega_nm, R0, R, V0, gamma_array, linear_re, linear_im);
+            linear_accum_re[tau] = linear_re;
+            linear_accum_im[tau] = linear_im;
+            
+            MOVEA(R, V, F);
+            force_avg(R, F, omega_nm, req_nm);
+            MOVEB(V, F);
+        }
+        
+        for (i = 0; i < LEN; i++) {
+            if (t_array[i] >= 0) {
+                MDlen = static_cast<int>(abs(t_array[i] / DT));
+                integral_du[i] = Integrate(du_accum, MDlen, DT); //notice sign of DT
+                //new for EFGRL
+                mc_re[i] += cos(integral_du[i]/hbar) * linear_accum_re[i] - sin(integral_du[i]/hbar) * linear_accum_im[i];
+                mc_im[i] += sin(integral_du[i]/hbar) * linear_accum_re[i] + cos(integral_du[i]/hbar) * linear_accum_im[i];
+            }
+        }
+        
+        // ---<<< Backward MD propagation
+        for (w = 0; w < n_omega; w++) {
+            R[w] = R0[w]; //restore initial condition
+            V[w] = V0[w];
+        }
+        if (t_array[0] < 0) DT = - ABSDT; //for MD propagation direction
+        else DT = ABSDT;
+        DT2= 0.5 * DT;
+        //NMD = NMD_backward;
+        
+        //dynamics on average surface + wigner sampling
+        force_avg(R, F, omega_nm, req_nm);
+        for (tau = 0 ; tau< NMD; tau++) {
+            //record DU every DT: DU is sum of all frequencies
+            du_accum[tau] = DU(R, omega_nm, req_nm);
+            //linear factor
+            Linear_num_LSC(omega_nm, R0, R, V0, gamma_array, linear_re, linear_im);
+            linear_accum_re[tau] = linear_re;
+            linear_accum_im[tau] = linear_im;
+
+            MOVEA(R, V, F);
+            force_avg(R, F, omega_nm, req_nm);
+            MOVEB(V, F);
+        }
+        
+        for (i = 0; i < LEN; i++) {
+            if (t_array[i] < 0) {
+                MDlen = static_cast<int>(abs(t_array[i]/ DT)); // MDlen should >= 0
+                integral_du[i] = Integrate(du_accum, MDlen, DT); //notice sign of DT
+                mc_re[i] += cos(integral_du[i]/hbar) * linear_accum_re[i] - sin(integral_du[i]/hbar) * linear_accum_im[i];
+                mc_im[i] += sin(integral_du[i]/hbar) * linear_accum_re[i] + cos(integral_du[i]/hbar) * linear_accum_im[i];
+            }
+        }
+        Job_finished(jobdone, j, MCN, startTime);
+    }
+    
+    
+    
+    //Analyze dynamics on average surface + wigner sampling (LSC)
+    for (i = 0; i < LEN; i++) { //Monte Carlo averaging
+        mc_re[i] /= MCN;
+        mc_im[i] /= MCN;
+        corr1[i] = mc_re[i]; //  k(t) re
+        corr2[i] = mc_im[i]; //  k(t) im
     }
     
     FFT(-1, mm, corr1, corr2);//notice its inverse FT
     
-    for(i=0; i<nn; i++) { //shift time origin
+    for(i = 0; i < nn; i++) { //shift time origin
         corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
         corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
     }
     
-    outfile.open((emptystr + "CAV_EFGRL_" + nameapp + ".dat").c_str());
+    
+    outfile.open((emptystr+"num_LSC_EFGRL_"+idstr+".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-        
-    //[D] C-D approximation using normal modes
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
-    for (i = 0; i < LEN; i++) {
-        t = T0 + DeltaT * i;
-        integ_re[0] = 0;
-        integ_im[0] = 0;
-        linear_accum_re = 0;
-        linear_accum_im = 0;
-        for (w = 0; w < n_omega; w++) {
-            Integrand_CD(omega_nm[w], t, integ_re[w], integ_im[w]);
-            integ_re[w] *= S_array[w];
-            integ_im[w] *= S_array[w];
-            
-            Linear_CD(omega_nm[w], t, req_nm[w], linear_re, linear_im);
-            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
-        }
-        integral_re = Sum(integ_re, n_omega);
-        integral_im = Sum(integ_im, n_omega);
-        temp_re = exp(-1 * integral_re) * cos(integral_im);
-        temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
-        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
-        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
-    }
-    
-    FFT(-1, mm, corr1, corr2);//notice its inverse FT
-    
-    for(i=0; i<nn; i++) { //shift time origin
-        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
-        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
-    }
-    
-    outfile.open((emptystr + "CD_EFGRL_" + nameapp + ".dat").c_str());
-    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-        
-    //[E] W-0 (inhomogeneous) approximation using normal modes
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
-    for (i = 0; i < LEN; i++) {
-        t = T0 + DeltaT * i;
-        integ_re[0] = 0;
-        integ_im[0] = 0;
-        linear_accum_re = 0;
-        linear_accum_im = 0;
-        for (w = 0; w < n_omega; w++) {
-            Integrand_W0(omega_nm[w], t, integ_re[w], integ_im[w]);
-            integ_re[w] *= S_array[w];
-            integ_im[w] *= S_array[w];
-            
-            Linear_W0(omega_nm[w], t, req_nm[w], linear_re, linear_im);
-            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
-        }
-        integral_re = Sum(integ_re, n_omega);
-        integral_im = Sum(integ_im, n_omega);
-        temp_re = exp(-1 * integral_re) * cos(integral_im);
-        temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
-        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
-        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
-    }
-    
-    FFT(-1, mm, corr1, corr2);//notice its inverse FT
-    
-    for(i=0; i<nn; i++) { //shift time origin
-        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
-        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
-    }
-    
-    outfile.open((emptystr + "W0_EFGRL_" + nameapp + ".dat").c_str());
-    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-        
-        
-    //[F] Marcus-limit approximation using normal modes
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
-    for (i = 0; i < LEN; i++) {
-        t = T0 + DeltaT * i;
-        integ_re[0] = 0;
-        integ_im[0] = 0;
-        linear_accum_re = 0;
-        linear_accum_im = 0;
-        for (w = 0; w < n_omega; w++) {
-            Integrand_Marcus(omega_nm[w], t, integ_re[w], integ_im[w]);
-            integ_re[w] *= S_array[w];
-            integ_im[w] *= S_array[w];
-            
-            Linear_Marcus(omega_nm[w], t, req_nm[w], linear_re, linear_im);
-            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
-        }
-        integral_re = Sum(integ_re, n_omega);
-        integral_im = Sum(integ_im, n_omega);
-        temp_re = exp(-1 * integral_re) * cos(integral_im);
-        temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
-        corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
-        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
-    }
-    
-    FFT(-1, mm, corr1, corr2);//notice its inverse FT
-    
-    for(i=0; i<nn; i++) { //shift time origin
-        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
-        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
-    }
-    
-    outfile.open((emptystr + "Marcus_EFGRL_" + nameapp + ".dat").c_str());
-    for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-        
     
 
-    
-    /*
-    //Classical sampling with donor potential dynamics (freq shifting)
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
-    for (i=0; i< LEN; i++) {
-        t = T0 + DeltaT * i;
-        integ_re[0]=integ_im[0]=0;
-        for (w = 1; w < n_omega; w++) {
-            omega = w * d_omega;
-            Integrand_CL_donor(omega, t, integ_re[w], integ_im[w]);
-            integ_re[w] *= SD[w];
-            integ_im[w] *= SD[w];
-        }
-        integral_re = Integrate(integ_re, n_omega, d_omega);
-        //integral_im = Integrate(integ_im, n_omega, d_omega);
-        
-        corr1[i] = exp(-1 * integral_re) ;
-        corr2[i] = 0;
-        //corr1[i] = exp(-1 * integral_re) * cos(integral_im);
-        //corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
-    }
-    
-    outfile.open("CL_donor_t_re.dat");
-    for (i=0; i< LEN; i++) outfile << corr1[i] << endl;
-    outfile.close();
-    outfile.clear();
-    
-    outfile.open("CL_donor_t_im.dat");
-    for (i=0; i< LEN; i++) outfile << corr2[i] << endl;
-    outfile.close();
-    outfile.clear();
-    
-    FFT(-1, mm, corr1, corr2);
-    
-    for(i=0; i<nn; i++) { //shift time origin
-        corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
-        corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
-    }
-    
-    //shift freq -omega_0=-Er
-    int shift_f(0);
-    shift_f = static_cast<int> (Er/(1.0/LEN/DeltaT)/(2*pi)+0.5);
-    
-    outfile.open("CL_donor_re.dat");
-    for (i=nn-shift_f; i<nn; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    for (i=0; i<nn-shift_f; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    outfile.close();
-    outfile.clear();
-    
-    */
-    
-    
-
-    
-    
-
-
-    
-    case_count++;
-    
-    //-------------- Summary ----------------
-    
-    cout << "CASE # " << case_count <<  " done:" << endl;
-    cout << "   beta = " << beta << endl;
-    cout << "    eta = " << eta << endl;
     cout << "-------------------" << endl;
-            
-    } //loop of thermal condition
-    
     cout << "DeltaT = " << DeltaT << endl;
     cout << "N = " << LEN << endl;
     cout << "df = " << 1.0/LEN/DeltaT << endl;
@@ -630,7 +463,7 @@ int main (int argc, char *argv[]) {
     cout << "beta = " << beta << endl;
     cout << " eta = " << eta << endl;
     
-    cout << "Done." << endl;
+    cout << "Done: job # " << idstr << endl;
 
 
 
@@ -747,11 +580,11 @@ void Linear_Marcus(double omega, double t, double req, double &re, double &im) {
   im = 0;
   return;
 }
+
                                                           
 double Integrate(double *data, int n, double dx){
-    double I =0;
-    I += (data[0]+data[n-1]);//  /2;
-    for (int i=1; i< n-1; i++) {
+    double I = 0;
+    for (int i = 0; i < n; i++) {
         I += data[i];
     }
     I *= dx;
@@ -760,7 +593,7 @@ double Integrate(double *data, int n, double dx){
 
 double Sum(double *data, int n){
     double I = 0;
-    for (int i=0; i< n; i++) {
+    for (int i = 0; i < n; i++) {
         I += data[i];
     }
     return I;
@@ -894,4 +727,95 @@ double** Create_matrix(int row, int col) {
   return matrix;
 }
 
+// generate Normal distribution of random variable(rannum) from a uniform distribution ran()
+double GAUSS(long *seed) {
+    double A1 = 3.949846138;
+    double A3 = 0.252408784;
+    double A5 = 0.076542912;
+    double A7 = 0.008355968;
+    double A9 = 0.029899776;
+    double SUM, R, R2, random, rannum;
+    SUM = 0.0;
+    
+    for (int i=1; i<=12; i++) {
+        //random = ran2(seed);
+        random = r1279();
+        SUM += random;
+    }
+    R = (SUM - 6.0)/4.0;
+    R2 = R*R;
+    rannum = ((((A9*R2+A7)*R2+A5)*R2+A3)*R2+A1)*R;
+    return (rannum);
+}
 
+// SUROUTINE TO PERFORM VELOCITY VERLET ALGORITHM
+void MOVEA(double R[], double V[], double F[]) {
+    double xx;
+    for (int i = 0; i < N; i++) {
+        xx = R[i] + DT*V[i] + DTSQ2*F[i];
+        //pbc(xx, yy, zz);
+        R[i] = xx;
+        V[i] += DT2*F[i];
+    }
+    return;
+}
+
+
+void MOVEB(double V[], double F[]) {
+    //always call MOVEB after call force** to update force F[]
+    for (int i = 0; i < N; i++) {
+        V[i] += DT2*F[i];
+    }
+    return;
+}
+
+void force_avg(double R[], double F[], double omega[], double req[]) {
+    //avg harmonic oscillator potential
+    for (int i = 0; i < N; i++) {
+        F[i] = - omega[i] * omega[i] * (R[i]- req[i] * 0.5);
+    }
+    return;
+}
+
+void force_donor(double R[], double F[], double omega[], double req[]) {
+    //donor harmonic oscillator potential
+    for (int i = 0; i < N; i++) {
+        F[i] = - omega[i] * omega[i] * R[i];
+    }
+    return;
+}
+
+double DU(double R[], double omega[], double req[]) {
+    double du = 0;
+    for (int i = 0; i < N; i++) du += req[i]*omega[i]*omega[i]*R[i]-0.5*req[i]*req[i]*omega[i]*omega[i];
+    return du;
+}
+
+double DUi(double R[], double omega[], double req[], int i) {
+    double du = 0;
+    du = req[i]*omega[i]*omega[i]*R[i]-0.5*req[i]*req[i]*omega[i]*omega[i];
+    return du;
+}
+
+void Linear_num_LSC(double *omega, double *r0, double *rt, double *p0, double *gm, double &re, double &im) {
+    int i;
+    re = 0;
+    im = 0;
+    for (i = 0; i< N ; i++) {
+        re += gm[i] *gm[i] * rt[i] * r0[i];
+        im -= gm[i] *gm[i] * rt[i] * p0[i] / omega[i] * tanh(beta*hbar*omega[i]*0.5);
+    }
+    return;
+}
+
+int Job_finished(int &jobdone, int count, int total, int startTime) {
+    int tenpercent;
+    int currentTime;
+    tenpercent = static_cast<int> (10 * static_cast<double> (count)/ static_cast<double> (total) );
+    if ( tenpercent > jobdone ) {
+        jobdone = tenpercent;
+        currentTime = time(NULL);
+        cout << "Job finished "<< jobdone <<"0 %. Time elapsed " << currentTime - startTime << " sec." << endl;
+    }
+    return tenpercent;
+}
