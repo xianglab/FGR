@@ -14,7 +14,7 @@
 using namespace std;
 
 // *********** change parameters *********
-double Omega = 1; //primary mode freq
+double Omega = 0.5; //primary mode freq
 const int bldim = 3;
 const int eldim = 3;
 double beta_list[bldim] = {0.2, 1.0, 5.0};  //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
@@ -24,6 +24,7 @@ const double omega_max = 15;
 const int LEN = 1024; //512;//number of t choices or 1024 with DeltaT=0.3
 const double DeltaT = 0.3;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
 const double DAcoupling = 0.1;
+const int MAXBIN = 400;
 // *********** **************** *********
 
 double beta = 1;//0.2;//1;//5;
@@ -55,8 +56,10 @@ void Integrand_CL_donor(double omega, double t, double &re, double &im);
 void Integrand_2cumu(double omega, double t, double &re, double &im);
 void Integrand_2cumu_inh(double omega, double t, double &re, double &im);
 double Integrate(double *data, int n, double dx);
+double Integrate_from(double *data, int sp, int n, double dx);
 double Sum(double *data, int n);
 double** Create_matrix(int row, int col);
+void histogram(double *a, int dim, double min_val, double max_val, int maxbin, double *hist);
 
 extern "C" {
     void dsyev_(const char &JOBZ, const char &UPLO, const int &N, double *A,
@@ -167,6 +170,8 @@ int main (int argc, char *argv[]) {
     
     cout << "---------- Eq FGR in Condon case ----------" << endl;
     
+    // Part I - Using exact discrete normal modes
+
     //BEGIN loop through thermal conditions
     int case_count(0);
     for (beta_index = 0; beta_index < bldim; beta_index++)
@@ -282,8 +287,6 @@ int main (int argc, char *argv[]) {
     
 
     //calculate exact reorganization energy Er for Marcus theory
-
-    
     Er = a_parameter = 0;
     for (i = 0; i < n_omega; i++) Er += 2.0 * c_nm[i] * c_nm[i] / (omega_nm[i] * omega_nm[i]);
     //for (i = 0; i < n_omega; i++) Er += 0.5 * omega_nm[i] * omega_nm[i] * req_nm[i] * req_nm[i]; //S_array[i] * omega_nm[i];
@@ -462,6 +465,301 @@ int main (int argc, char *argv[]) {
     
     }
     
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ I am a dividing line ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    
+    
+    // Part II - Using continuous spectral density casted from histogram of normal mode Spectral density
+    double influence[MAXBIN]; //discrete SD histogram (influence density of states)=J(omega)
+    int bin;
+    int extreme_count(0);
+    double min_val = 0;
+    double dr = (omega_max - min_val)/MAXBIN; //bin size
+    double J_array[n_omega];//J_j = c_j^2 / omega_j
+    double J_cont[n_omega];//J(omega) continuous from histogram
+    double req_cont[n_omega];
+    double c_cont[n_omega];
+    //normalization
+    double sum_J(0);
+    double sum_influence(0);
+
+    //BEGIN loop through thermal conditions
+    case_count = 0;
+    for (beta_index = 0; beta_index < bldim; beta_index++)
+        for (eta_index = 0; eta_index < eldim; eta_index++)
+        {
+            beta = beta_list[beta_index];
+            eta = eta_list[eta_index];
+            ss.str("");
+            nameapp = "";
+            ss << "b" << beta;
+            ss << "e" << eta;
+            nameapp = ss.str();
+            
+            //secondary bath mode min shift coefficients (for EXACT discrete normal mode analysis)
+            for (w = 1; w < n_omega; w++) {
+                //Ohmic SD
+                c_bath[w] = sqrt( 2.0 / pi * J_omega_ohmic(w*d_omega, eta) * d_omega * d_omega * w);
+            }
+
+            //********** BEGIN of Normal mode analysis ***********
+            for (i = 0; i < n_omega; i++)
+                for (j = 0; j <n_omega; j++) D_matrix[i][j] = 0;
+            D_matrix[0][0] = Omega*Omega;
+            for (w =1 ; w < n_omega ; w++) {
+                D_matrix[0][0] += pow(c_bath[w]/(w*d_omega) ,2);
+                D_matrix[0][w] = D_matrix[w][0] = c_bath[w];
+                D_matrix[w][w] = pow(w*d_omega ,2);
+            }
+            for (i = 0; i < dim; i++) {
+                for (j = 0; j < dim; j++) {
+                    matrix[j][i] = D_matrix[i][j]; //switch i j to match with Fortran array memory index
+                }
+            }
+            //diagonalize matrix, the eigenvectors transpose is in result matrix => TT_ns.
+            dsyev_('V', 'L', col, matrix[0], col, eig_val, work, lwork, info); //diagonalize matrix
+            if (info != 0) cout << "Lapack failed. " << endl;
+            
+            for (i = 0; i < dim; i++) omega_nm[i] = sqrt(eig_val[i]);//normal mode freqs
+            
+            for (i=0; i < dim; i++)
+                for (j=0; j < dim; j++) TT_ns[i][j] = matrix[i][j];//transformation matrix
+            // the coefficients of linear electronic coupling in normal modes (gamma[j]=TT_ns[j][0]*gamma_y), here gamma_y=1
+            //for (i=0; i<n_omega; i++) gamma_array[i] = TT_ns[i][0];
+            //for (i=0; i<n_omega; i++) shift_NE[i] = s * gamma_array[i];
+            //req of normal modes (acceptor's potential energy min shift)
+            for (i = 0; i < n_omega; i++) {
+                req_nm[i] = 1 * TT_ns[i][0];
+                for (a = 1; a < n_omega; a++) req_nm[i] -= TT_ns[i][a] * c_bath[a] / (a*d_omega * a*d_omega);
+            }
+            for (i = 0; i < n_omega; i++) {
+                //tilde c_j coupling strength normal mode
+                c_nm[i] = req_nm[i] * omega_nm[i] * omega_nm[i];
+                req_nm[i] *= 2.0 * y_0;
+                //discrete Huang-Rhys factor
+                S_array[i] = omega_nm[i] * req_nm[i] * req_nm[i] * 0.5;
+            }
+            // ******** END of Normal mode analysis **************
+            
+            // ******** BEGIN of histogram normal mode Spectral density ***********
+            extreme_count = 0;
+            min_val = 0;
+            //normalization
+            sum_J = 0;
+            sum_influence = 0;
+            for (bin = 0; bin < MAXBIN; bin++) influence[bin] = 0.0;
+            //discrete J spectral density
+            for (i = 0; i < n_omega; i++) {
+                J_array[i] = c_nm[i] * c_nm[i] / omega_nm[i] * pi * 0.5;
+                sum_J += J_array[i];
+            }
+            for (i = 0; i < n_omega; i++) {
+                bin = static_cast<int> ((omega_nm[i] - min_val)/dr);//((omega_nm[i]+dr*0.5-min_val)/dr);
+                if (bin >=0 && bin < MAXBIN) influence[bin] += J_array[i]; //histogramming
+                else extreme_count++;
+            }
+            if (extreme_count != 0)
+                cout << "Total extreme histogram points: " << extreme_count << endl;
+            
+            for (bin = 0; bin < MAXBIN; bin++) {
+                influence[bin] /= (n_omega-extreme_count);
+                // for multiple configurations need to /hist_count
+                sum_influence += influence[bin];
+            }
+            //normalization of J_histogram: influence
+            for (bin = 0; bin < MAXBIN; bin++) influence[bin] *= sum_J / (dr * sum_influence);
+            //outfile.open("J_nm_hist.dat");
+            //for (bin = 0; bin < MAXBIN; bin++) outfile << influence[bin] << endl;
+            //outfile.close();
+            //outfile.clear();
+            //cout << "Area of J_nm histogram = " << sum_J << endl;
+            //cout << " # of bins: MAXBIN = " << MAXBIN << endl;
+            // ********** END of histogram normal mode Spectral density ************
+            
+            
+            //construct continuous J_cont(omega) from histogram: influence
+            for (w = 1; w < n_omega; w++) {
+                omega = w * d_omega;
+                bin = static_cast<int> ((omega - min_val)/dr);
+                J_cont[w] = influence[bin];
+            }
+            
+            //calculate exact reorganization energy Er for Marcus theory
+            Er = a_parameter = 0;
+            for (w = 1; w < n_omega; w++) {
+                omega = w * d_omega;
+                //eq min for each continuous mode
+                req_cont[w] = sqrt(8.0 * d_omega * J_cont[w] / pi / pow(omega,3));
+                //c coupling for each continuous mode
+                //c_cont[w] = sqrt( 2.0 / pi * J_cont[w] * d_omega * d_omega * w);
+                Er += 4.0/pi * J_cont[w] / omega * d_omega;
+                a_parameter += 0.25*pow(omega, 3)*req_cont[w]*req_cont[w]/tanh(beta*hbar*omega*0.5);
+            }
+
+            //Case [1]: Equilibrium exact QM / LSC in Condon case using J_cont(\omega)
+            for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
+            for (i = 0; i < LEN; i++) {
+                t = T0 + DeltaT * i;
+                integ_re[0] = 0;
+                integ_im[0] = 0;
+                for (w = 1; w < n_omega; w++) {
+                    omega = w * d_omega;
+                    Integrand_LSC(omega, t, integ_re[w], integ_im[w]);
+                    integ_re[w] *= 4*J_cont[w]/pi/(omega*omega);
+                    integ_im[w] *= 4*J_cont[w]/pi/(omega*omega);
+                }
+                integral_re = Integrate_from(integ_re, 1, n_omega, d_omega);
+                integral_im = Integrate_from(integ_im, 1, n_omega, d_omega);
+                corr1[i] = exp(-1 * integral_re) * cos(integral_im);
+                corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
+            }
+            
+            FFT(-1, mm, corr1, corr2);//notice its inverse FT
+            
+            for(i=0; i<nn; i++) { //shift time origin
+                corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
+                corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
+            }
+            
+            outfile.open((emptystr + "QMLSC_EFGR_Jcont_" + nameapp + ".dat").c_str());
+            for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
+            outfile.close();
+            outfile.clear();
+            
+            
+            //Case [2]: inhomogeneous limit (W-0)
+            for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
+            for (i = 0; i < LEN; i++) {
+                t = T0 + DeltaT * i;
+                integ_re[0] = 0;
+                integ_im[0] = 0;
+                for (w = 1; w < n_omega; w++) {
+                    omega = w * d_omega;
+                    Integrand_LSC_inh(omega, t, integ_re[w], integ_im[w]);
+                    integ_re[w] *= 4*J_cont[w]/pi/(omega*omega);
+                    integ_im[w] *= 4*J_cont[w]/pi/(omega*omega);
+                }
+                integral_re = Integrate_from(integ_re, 1, n_omega, d_omega);
+                integral_im = Integrate_from(integ_im, 1, n_omega, d_omega);
+                corr1[i] = exp(-1 * integral_re) * cos(integral_im);
+                corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
+            }
+            
+            FFT(-1, mm, corr1, corr2);//notice its inverse FT
+            
+            for(i=0; i<nn; i++) { //shift time origin
+                corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
+                corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
+            }
+            
+            outfile.open((emptystr + "W0_EFGR_Jcont_" + nameapp + ".dat").c_str());
+            for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
+            outfile.close();
+            outfile.clear();
+            
+            
+            //Case [3]: C-AV limit
+            for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
+            for (i = 0; i < LEN; i++) {
+                t = T0 + DeltaT * i;
+                integ_re[0] = 0;
+                integ_im[0] = 0;
+                for (w = 1; w < n_omega; w++) {
+                    omega = w * d_omega;
+                    Integrand_CL_avg(omega, t, integ_re[w], integ_im[w]);
+                    integ_re[w] *= 4*J_cont[w]/pi/(omega*omega);
+                    integ_im[w] *= 4*J_cont[w]/pi/(omega*omega);
+                }
+                integral_re = Integrate_from(integ_re, 1, n_omega, d_omega);
+                integral_im = Integrate_from(integ_im, 1, n_omega, d_omega);
+                corr1[i] = exp(-1 * integral_re) * cos(integral_im);
+                corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
+            }
+            
+            FFT(-1, mm, corr1, corr2);//notice its inverse FT
+            
+            for(i=0; i<nn; i++) { //shift time origin
+                corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
+                corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
+            }
+            
+            outfile.open((emptystr + "CAV_EFGR_Jcont_" + nameapp + ".dat").c_str());
+            for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
+            outfile.close();
+            outfile.clear();
+
+            
+            //Case [4]: C-D limit with freq shifting
+            for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
+            for (i=0; i< LEN; i++) {
+                t = T0 + DeltaT * i;
+                integ_re[0]=integ_im[0]=0;
+                for (w = 1; w < n_omega; w++) {
+                    omega = w * d_omega;
+                    Integrand_CL_donor(omega, t, integ_re[w], integ_im[w]);
+                    integ_re[w] *= 4*J_cont[w]/pi/(omega*omega);
+                    integ_im[w] *= 4*J_cont[w]/pi/(omega*omega);
+                }
+                integral_re = Integrate_from(integ_re, 1, n_omega, d_omega);
+                //integral_im = Integrate_from(integ_im, 1, n_omega, d_omega);
+                integral_im = 0;
+                
+                corr1[i] = exp(-1 * integral_re) ;
+                corr2[i] = 0;
+                //corr1[i] = exp(-1 * integral_re) * cos(integral_im);
+                //corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
+            }
+            
+            FFT(-1, mm, corr1, corr2);
+            
+            for(i=0; i<nn; i++) { //shift time origin
+                corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
+                corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
+            }
+            
+            //shift freq -omega_0=-Er
+            int shift_f(0);
+            shift_f = static_cast<int> (Er/(1.0/LEN/DeltaT)/(2*pi)+0.5);
+            
+            outfile.open((emptystr + "CD_EFGR_Jcont_" + nameapp + ".dat").c_str());
+            for (i=nn-shift_f; i<nn; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
+            for (i=0; i<nn-shift_f; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
+            outfile.close();
+            outfile.clear();
+            
+            
+            //case [5] - [6]: marcus-levich(W-0) and marcus limits
+            double df= 1.0/LEN/DeltaT;
+            double dE = df * 2 * pi;
+            outfile.open((emptystr + "MarcusLevich_EFGR_Jcont_" + nameapp + ".dat").c_str());
+            for (i=0; i<nn/2; i++) {
+                outfile << sqrt(pi/a_parameter) * exp(-(dE*i*hbar-Er)*(dE*i*hbar-Er)/(4 * hbar*a_parameter))*DAcoupling*DAcoupling <<endl;
+            }
+            outfile.close();
+            outfile.clear();
+            
+            outfile.open((emptystr + "Marcus_EFGR_Jcont_" + nameapp + ".dat").c_str());
+            for (i=0; i<nn/2; i++) {
+                outfile << sqrt(beta*pi/Er) * exp(-beta*(dE*i*hbar-Er)*(dE*i*hbar-Er)/(4 * Er))*DAcoupling*DAcoupling << endl;
+            }
+            outfile.close();
+            outfile.clear();
+            
+            case_count++;
+            
+            cout << "CASE # " << case_count <<  " done:" << endl;
+            cout << "   beta = " << beta << endl;
+            cout << "    eta = " << eta << endl;
+            cout << "       Er = " << Er << endl;
+            cout << "       a_parameter = " << a_parameter << endl;
+            cout << "---------  ---------  ---------" << endl;
+            
+    }
+    
+    
+    
+    
+    
+    
     //-------------- Summary ----------------
     cout << endl;
     cout << "--------- Summary ---------- " << endl;
@@ -547,6 +845,16 @@ double Integrate(double *data, int n, double dx){
     double I =0;
     I += (data[0]+data[n-1])/2;
     for (int i=1; i< n-1; i++) {
+        I += data[i];
+    }
+    I *= dx;
+    return I;
+}
+
+double Integrate_from(double *data, int sp, int n, double dx){
+    double I(0);
+    I += (data[sp]+data[n-1])/2;
+    for (int i=sp+1; i< n-1; i++) {
         I += data[i];
     }
     I *= dx;
@@ -687,4 +995,22 @@ double** Create_matrix(int row, int col) {
         matrix[i] = matrix[i-1] + row;
     return matrix;
 }
+
+void histogram(double *a, int dim, double min_val, double max_val, int maxbin, double *hist) {
+    int i, bin;
+    int extreme_count(0);
+    double dr = (max_val - min_val)/maxbin;
+    for (bin = 0; bin < maxbin; bin++) hist[bin] = 0;
+    for (i=0; i< dim; i++) {
+        bin = static_cast<int> ((a[i]+dr*0.5-min_val)/dr);
+        if (bin >=0 && bin < maxbin) hist[bin]++;
+        else extreme_count++;
+    }
+    for (bin =0; bin < maxbin; bin++) hist[bin] /= dim;
+    
+    if (extreme_count != 0)
+        cout << "Total extreme histogram points: " << extreme_count << endl;
+    return;
+}
+
 
