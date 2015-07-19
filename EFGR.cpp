@@ -1,5 +1,5 @@
 /* This code calculates equilibrium Fermi Golden Rule rate
-   in Condon case, Brownian oscillator model
+   in Condon case, Brownian oscillator model using EXACT NORMAL MODES
    compare with linearized semiclassical methods  
    To compile: g++ -o EFGR EFGR.cpp -llapack -lrefblas -lgfortran
    (c) Xiang Sun 2015
@@ -13,31 +13,27 @@
 #include <cmath>
 using namespace std;
 
-string nameapp = "b5e0.5_";
+// *********** change parameters *********
+double Omega = 1; //primary mode freq
+const int bldim = 3;
+const int eldim = 3;
+double beta_list[bldim] = {0.2, 1.0, 5.0};  //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
+double eta_list[eldim] = {0.5, 1.0, 5.0}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
+const int n_omega = 1000;
+const double omega_max = 15;
+const int LEN = 1024; //512;//number of t choices or 1024 with DeltaT=0.3
+const double DeltaT = 0.3;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
+const double DAcoupling = 0.1;
+// *********** **************** *********
+
 double beta = 1;//0.2;//1;//5;
 double eta = 1; //0.2;//1;//5;
-const double DAcoupling = 0.1;
-double s = 1; //Noneq. initial shift of parimary mode
-double tp_fix = 5; //fixed t' for noneq FGR rate k(t',omega_DA) with scan omega_DA
-double omega_DA_fix = 3; //fixed omega_DA, with scan tp
-
-//const double DeltaTau =0.002; //time slice for t' griding
-//const double tp_max = 40; //scanning tp option, DeltaTau as step
-//const double Deltatp = 0.2;
-
-double Omega = 0.5; //primary mode freq
 double y_0 = 1.0; //shift of primary mode
-
-const int n_omega = 100;
-const double d_omega = 0.1;//0.1;//0.002;for gaussian//0.1; for ohmic
-//const double omega_max = 20;//1;//20;//2.5 for gaussian// 20 for ohmic
-const double d_omega_eff = 0.1; //for effective SD sampling rate
+const double d_omega = omega_max / n_omega;//0.1;//0.002;for gaussian//0.1; for ohmic
+const double d_omega_eff = omega_max / n_omega; //for effective SD sampling rate
 const double omega_c = 1; // the cutoff frequency for ohmic
 
-const int LEN = 512;//512;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
-const double DeltaT=0.2;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
 const double T0= -DeltaT*(LEN*0.5);//-DeltaT*LEN/2+DeltaT/2;
-
 const double pi=3.14159265358979324;
 const double RT_2PI= sqrt(2*pi);
 const double hbar = 1;
@@ -58,9 +54,9 @@ void Integrand_CL_avg(double omega, double t, double &re, double &im);
 void Integrand_CL_donor(double omega, double t, double &re, double &im);
 void Integrand_2cumu(double omega, double t, double &re, double &im);
 void Integrand_2cumu_inh(double omega, double t, double &re, double &im);
-void Integrand_NE_exact(double omega, double tp, double tau,  double shift, double req, double &re, double &im);
 double Integrate(double *data, int n, double dx);
 double Sum(double *data, int n);
+double** Create_matrix(int row, int col);
 
 extern "C" {
     void dsyev_(const char &JOBZ, const char &UPLO, const int &N, double *A,
@@ -75,6 +71,13 @@ int main (int argc, char *argv[]) {
     string emptystr("");
     string filename;
     string idstr("");
+    string nameapp("");
+    
+    ss.str("");
+    nameapp = "";
+    ss << "b" << beta;
+    ss << "e" << eta << "_";
+    nameapp = ss.str();
 
     
     int mm(0), nn(1); // nn = 2^mm is number of (complex) data to FFT
@@ -121,71 +124,9 @@ int main (int argc, char *argv[]) {
     
     double a_parameter_eff(0);
     double Er_bath(0);//reorganization energy for Ohmic bath
-    
-    cout << "eta = " << eta << endl;
-    
     double Er_eff(0); //reorganization energy for effective drude SD
     double Er_eff_Jw(0);
     double Er_eff_RRww(0);
-    
-    outfile.open("Er_eff.dat");
-for (eta = 0; eta < 0.2; eta += 0.001) {
-    
-    //setting up spectral density
-    for (w = 1; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff(w*d_omega_eff, eta);
-    for (w = 1; w < n_omega; w++) SD[w] = S_omega_ohmic(w*d_omega, eta); //Ohmic spectral density
-    //for (w = 0; w < n_omega; w++) SD[w] = S_omega_drude(w*d_omega, eta); //Drude spectral density
-    //for (w = 0; w < n_omega; w++) SD[w] = S_omega_gaussian(w*d_omega, eta, sigma, omega_op);
-    
-    //outfile.open("S(omega).dat");
-    //for (i=0; i< n_omega; i++) outfile << SD[i] << endl;
-    //outfile.close();
-    //outfile.clear();
-    //outfile.open("J_eff(omega).dat");
-    //for (i=0; i< n_omega; i++) outfile << J_eff[i] << endl;
-    //outfile.close();
-    //outfile.clear();
-    
-    Er_eff_RRww = 0;
-    Er_eff_Jw = 0;
-    a_parameter_eff = 0;
-    
-    for (w = 1; w < n_omega; w++) {
-        //eq min for each "eff" normal mode
-        req_eff[w] = sqrt(8.0 * d_omega_eff * J_eff[w] / pi / pow(w*d_omega_eff,3));
-        //c_alpha for each "eff" normal mode
-        c_eff[w] = sqrt( 2.0 / pi * J_eff[w] * d_omega_eff * d_omega_eff * w);
-                          
-        Er_eff_Jw += J_eff[w] / (w * d_omega_eff) * d_omega_eff * 4.0/pi;
-        Er_eff_RRww += 0.5 * req_eff[w] * req_eff[w]  * w * d_omega_eff * w * d_omega_eff;
-        
-        a_parameter_eff += 0.25 * pow(w * d_omega_eff,3) *req_eff[w]*req_eff[w] /tanh(beta*hbar* w * d_omega_eff *0.5);
-    }
-    //cout << "Er_eff = " << Er_eff << endl;
-    
-    //cout << "Er_eff_Jw = " << Er_eff_Jw << endl;
-    //cout << "Er_eff_RRww = " << Er_eff_RRww << endl;
-    outfile << Er_eff_Jw  << endl;
-                          
-    //cout << "a_parameter_eff = " << a_parameter_eff << endl;
-}
-    outfile.close();
-    outfile.clear();
-    
-    //secondary bath mode min shift coefficients (for EXACT discrete normal mode analysis)
-    double c_bath[n_omega];
-    for (w = 1; w < n_omega; w++) {
-        //Ohmic SD
-        c_bath[w] = sqrt( 2.0 / pi * J_omega_ohmic(w*d_omega, eta) * d_omega * d_omega * w);
-        //Gaussian SD
-        //c_bath[w] = sqrt( 2.0 / pi * S_omega_gaussian(w*d_omega, eta, sigma, omega_op) * d_omega * d_omega * w);
-        Er_bath += 2.0 * c_bath[w] * c_bath[w] / (w*d_omega * w*d_omega);
-    }
-    cout << "Er_bath = " << Er_bath << endl; //checked for eta linearality
-    
-    
-    
-    //********** BEGIN of Normal mode analysis ***********
     
     //Dimension of matrix (Check this every time)
     int dim = n_omega;
@@ -204,16 +145,95 @@ for (eta = 0; eta < 0.2; eta += 0.001) {
     double *work = new double [lwork];
     //-------------------------------------
     
-    double TT_ns[n_omega][n_omega];
+    double **TT_ns;
+    TT_ns = Create_matrix(n_omega, n_omega);
     //transformation matrix: [normal mode]=[[TT_ns]]*[system-bath]
     //TT_ns * D_matrix * T_sn = diag, eigenvectors are row-vector of TT_ns
     double omega_nm[n_omega]; //normal mode frequencies
     double req_nm[n_omega]; //req of normal modes (acceptor shift)
     double c_nm[n_omega];//coupling strength of normal modes
     double S_array[n_omega];//Huang-Rhys factor for normal modes
+    double **D_matrix;// the Hessian matrix
+    D_matrix = Create_matrix(n_omega, n_omega);
+    double c_bath[n_omega]; //secondary bath mode min shift coefficients
+    double gamma_array[n_omega];//linear coupling coefficients
+    double shift_NE[n_omega]; //the s_j shifting for noneq initial sampling
+    double d_omega_DA = 2 * pi / LEN / DeltaT; //omega_DA griding size
+    double Er=0;
+    double a_parameter=0;
     
-    double D_matrix[n_omega][n_omega];// the Hessian matrix
-    for (i=0; i< n_omega; i++) for (j=0; j<n_omega ;j++) D_matrix[i][j] = 0;
+    int beta_index(0);
+    int eta_index(0);
+    
+    cout << "---------- Eq FGR in Condon case ----------" << endl;
+    
+    //BEGIN loop through thermal conditions
+    int case_count(0);
+    for (beta_index = 0; beta_index < bldim; beta_index++)
+        for (eta_index = 0; eta_index < eldim; eta_index++)
+    {
+            beta = beta_list[beta_index];
+            eta = eta_list[eta_index];
+            ss.str("");
+            nameapp = "";
+            ss << "b" << beta;
+            ss << "e" << eta;
+            nameapp = ss.str();
+    
+    /*
+        //setting up spectral density
+        for (w = 1; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff(w*d_omega_eff, eta);
+        for (w = 1; w < n_omega; w++) SD[w] = S_omega_ohmic(w*d_omega, eta); //Ohmic spectral density
+        //for (w = 0; w < n_omega; w++) SD[w] = S_omega_drude(w*d_omega, eta); //Drude spectral density
+        //for (w = 0; w < n_omega; w++) SD[w] = S_omega_gaussian(w*d_omega, eta, sigma, omega_op);
+        
+        //outfile.open("S(omega).dat");
+        //for (i=0; i< n_omega; i++) outfile << SD[i] << endl;
+        //outfile.close();
+        //outfile.clear();
+        //outfile.open("J_eff(omega).dat");
+        //for (i=0; i< n_omega; i++) outfile << J_eff[i] << endl;
+        //outfile.close();
+        //outfile.clear();
+        
+        Er_eff_RRww = 0;
+        Er_eff_Jw = 0;
+        a_parameter_eff = 0;
+        
+        for (w = 1; w < n_omega; w++) {
+            //eq min for each "eff" normal mode
+            req_eff[w] = sqrt(8.0 * d_omega_eff * J_eff[w] / pi / pow(w*d_omega_eff,3));
+            //c_alpha for each "eff" normal mode
+            c_eff[w] = sqrt( 2.0 / pi * J_eff[w] * d_omega_eff * d_omega_eff * w);
+            
+            Er_eff_Jw += J_eff[w] / (w * d_omega_eff) * d_omega_eff * 4.0/pi;
+            Er_eff_RRww += 0.5 * req_eff[w] * req_eff[w]  * w * d_omega_eff * w * d_omega_eff;
+            
+            a_parameter_eff += 0.25 * pow(w * d_omega_eff,3) *req_eff[w]*req_eff[w] /tanh(beta*hbar* w * d_omega_eff *0.5);
+        }
+        //cout << "Er_eff = " << Er_eff << endl;
+        //cout << "Er_eff_Jw = " << Er_eff_Jw << endl;
+        //cout << "Er_eff_RRww = " << Er_eff_RRww << endl;
+        //cout << "a_parameter_eff = " << a_parameter_eff << endl;
+     */
+    
+    //secondary bath mode min shift coefficients (for EXACT discrete normal mode analysis)
+    
+    for (w = 1; w < n_omega; w++) {
+        //Ohmic SD
+        c_bath[w] = sqrt( 2.0 / pi * J_omega_ohmic(w*d_omega, eta) * d_omega * d_omega * w);
+        //Gaussian SD
+        //c_bath[w] = sqrt( 2.0 / pi * S_omega_gaussian(w*d_omega, eta, sigma, omega_op) * d_omega * d_omega * w);
+        //Er_bath += 2.0 * c_bath[w] * c_bath[w] / (w*d_omega * w*d_omega);
+    }
+    //cout << "Er_bath = " << Er_bath << endl; //checked for eta linearality
+    
+    
+    
+    //********** BEGIN of Normal mode analysis ***********
+
+    for (i = 0; i < n_omega; i++)
+        for (j = 0; j <n_omega; j++) D_matrix[i][j] = 0;
     D_matrix[0][0] = Omega*Omega;
     for (w =1 ; w < n_omega ; w++) {
         D_matrix[0][0] += pow(c_bath[w]/(w*d_omega) ,2);
@@ -221,61 +241,24 @@ for (eta = 0; eta < 0.2; eta += 0.001) {
         D_matrix[w][w] = pow(w*d_omega ,2);
     }
     
-    double Diag_matrix[n_omega][n_omega];
-    
-    //cout << "Hession matrix D:" << endl;
-    for (i=0; i < dim; i++) {
-        for (j=0; j < dim; j++) {
+    for (i = 0; i < dim; i++) {
+        for (j = 0; j < dim; j++) {
             matrix[j][i] = D_matrix[i][j]; //switch i j to match with Fortran array memory index
-            //cout << D_matrix[i][j] << " ";
         }
-        //cout << endl;
     }
     
     //diagonalize matrix, the eigenvectors transpose is in result matrix => TT_ns.
     dsyev_('V', 'L', col, matrix[0], col, eig_val, work, lwork, info); //diagonalize matrix
     if (info != 0) cout << "Lapack failed. " << endl;
     
-    for (i=0; i < dim; i++) omega_nm[i] = sqrt(eig_val[i]);
-    
-    //outfile.open("normal_mode_freq.dat");
-    //for (i=0; i < dim; i++) outfile << omega_nm[i] << endl;
-    //outfile.close();
-    //outfile.clear();
-    
-    //cout << "eigen values = ";
-    //for (i=0; i < dim; i++) cout << eig_val[i] <<"    ";
-    //cout << endl;
+    for (i = 0; i < dim; i++) omega_nm[i] = sqrt(eig_val[i]);//normal mode freqs
     
     for (i=0; i < dim; i++)
-        for (j=0; j < dim; j++) TT_ns[i][j] = matrix[i][j];
-    
-    /*
-     cout << "diagonalized Hessian matrix: " << endl;
-     for (i=0; i < dim; i++) {
-     for (j=0; j < dim; j++) {
-     for (a=0; a < dim; a++)
-     for (b=0; b < dim; b++) Diag_matrix[i][j] += TT_ns[i][a]*D_matrix[a][b]*TT_ns[j][b]; //TT_ns * D * T_sn
-     cout << Diag_matrix[i][j] << "    " ;
-     }
-     cout << endl;
-     }
-     
-     cout << endl;
-     cout << "transformation matrix TT_ns (TT_ns * D * T_sn = diag, eigenvectors are row-vector of TT_ns): " << endl;
-     for (i=0; i < dim; i++) {
-     for (j=0; j < dim; j++) cout << TT_ns[i][j] << "    " ;
-     cout << endl;
-     }
-     */
+        for (j=0; j < dim; j++) TT_ns[i][j] = matrix[i][j];//transformation matrix
     
     // the coefficients of linear electronic coupling in normal modes (gamma[j]=TT_ns[j][0]*gamma_y), here gamma_y=1
-    double gamma_nm[n_omega];
-    for (i=0; i<n_omega; i++) gamma_nm[i] = TT_ns[i][0];
-    
-    double shift_NE[n_omega]; //the s_j shifting for initial sampling
-    for (i=0; i<n_omega; i++) shift_NE[i] = s * gamma_nm[i];
-    
+    //for (i=0; i<n_omega; i++) gamma_array[i] = TT_ns[i][0];
+    //for (i=0; i<n_omega; i++) shift_NE[i] = s * gamma_array[i];
     
     //req of normal modes (acceptor's potential energy min shift)
     for (i = 0; i < n_omega; i++) {
@@ -283,39 +266,31 @@ for (eta = 0; eta < 0.2; eta += 0.001) {
         for (a = 1; a < n_omega; a++) req_nm[i] -= TT_ns[i][a] * c_bath[a] / (a*d_omega * a*d_omega);
     }
     
-    outfile.open("Huang-Rhys.dat");
+    //outfile.open("Huang-Rhys.dat");
     for (i = 0; i < n_omega; i++) {
         //tilde c_j coupling strength normal mode
         c_nm[i] = req_nm[i] * omega_nm[i] * omega_nm[i];
         req_nm[i] *= 2.0 * y_0;
         //discrete Huang-Rhys factor
         S_array[i] = omega_nm[i] * req_nm[i] * req_nm[i] * 0.5;
-        outfile << S_array[i] << endl;
+        //outfile << S_array[i] << endl;
     }
-    outfile.close();
-    outfile.clear();
+    //outfile.close();
+    //outfile.clear();
 
     //******** END of Normal mode analysis **************
     
-    cout << "---------- Eq. FGR in Condon case ----------" << endl;
+
+    //calculate exact reorganization energy Er for Marcus theory
+
     
-    //the exact reorganization energy Er for Marcus theory
-    double Er=0;
-    double a_parameter=0;
-    Er=0;
-    
+    Er = a_parameter = 0;
     for (i = 0; i < n_omega; i++) Er += 2.0 * c_nm[i] * c_nm[i] / (omega_nm[i] * omega_nm[i]);
     //for (i = 0; i < n_omega; i++) Er += 0.5 * omega_nm[i] * omega_nm[i] * req_nm[i] * req_nm[i]; //S_array[i] * omega_nm[i];
 
     for (i = 0; i < n_omega; i++) a_parameter += 0.5 * S_array[i] * omega_nm[i] * omega_nm[i] /tanh(beta*hbar* omega_nm[i] *0.5);
 
-
-    
-    
-
-
-    //cout << "At omega_DA = 3: \nlsc/exact\t(inh)\t\tCAV \t\tCD \t\tMarcus-Levich \tMarcus" << endl;
-    cout << "At omega_DA = 3: \nlsc/exact\tCAV \t\tCD \t\tMarcus-Levich \tMarcus" << endl;
+    //cout << "At omega_DA = 3: \nlsc/exact\tCAV \t\tCD \t\tMarcus-Levich \tMarcus" << endl;
     
     
     //Case [1]: Equilibrium exact QM / LSC in Condon case using discreitzed J(\omega)
@@ -334,17 +309,7 @@ for (eta = 0; eta < 0.2; eta += 0.001) {
         corr1[i] = exp(-1 * integral_re) * cos(integral_im);
         corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
      }
-    
-    outfile.open((emptystr + "EFGR_tre_lsc.dat").c_str());
-    for (i=0; i<nn; i++) outfile << corr1[i] << endl;
-    outfile.close();
-    outfile.clear();
-    outfile.open((emptystr + "EFGR_tim_lsc.dat").c_str());
-    for (i=0; i<nn; i++) outfile << corr2[i] << endl;
-    outfile.close();
-    outfile.clear();
-    
-    
+
      FFT(-1, mm, corr1, corr2);//notice its inverse FT
      
      for(i=0; i<nn; i++) { //shift time origin
@@ -352,11 +317,11 @@ for (eta = 0; eta < 0.2; eta += 0.001) {
          corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
      }
      
-     outfile.open((emptystr + "EFGR_lsc.dat").c_str());
+     outfile.open((emptystr + "QMLSC_EFGR_nm_" + nameapp + ".dat").c_str());
      for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
      outfile.close();
      outfile.clear();
-    cout << corr1_orig[49]*LEN*DeltaT*DAcoupling*DAcoupling<<"\t";//at omega_DA=3
+    //cout << corr1_orig[49]*LEN*DeltaT*DAcoupling*DAcoupling<<"\t";//at omega_DA=3
     
     
     //Case [2]: inhomogeneous limit (W-0)
@@ -383,7 +348,7 @@ for (eta = 0; eta < 0.2; eta += 0.001) {
         corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
     }
     
-    outfile.open((emptystr + "EFGR_inh.dat").c_str());
+    outfile.open((emptystr + "W0_EFGR_nm_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
@@ -414,11 +379,11 @@ for (eta = 0; eta < 0.2; eta += 0.001) {
         corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
     }
     
-    outfile.open((emptystr + "EFGR_CAV.dat").c_str());
+    outfile.open((emptystr + "CAV_EFGR_nm_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-    cout << corr1_orig[49]*LEN*DeltaT*DAcoupling*DAcoupling<<"\t";//at omega_DA=3
+    //cout << corr1_orig[49]*LEN*DeltaT*DAcoupling*DAcoupling<<"\t";//at omega_DA=3
     
     
     //Case [4]: C-D limit with freq shifting
@@ -434,6 +399,7 @@ for (eta = 0; eta < 0.2; eta += 0.001) {
         //integral_re = Integrate(integ_re, n_omega, d_omega);
         integral_re = Sum(integ_re, n_omega);
         //integral_im = Integrate(integ_im, n_omega, d_omega);
+        integral_im = 0;
         
         corr1[i] = exp(-1 * integral_re) ;
         corr2[i] = 0;
@@ -452,60 +418,59 @@ for (eta = 0; eta < 0.2; eta += 0.001) {
     int shift_f(0);
     shift_f = static_cast<int> (Er/(1.0/LEN/DeltaT)/(2*pi)+0.5);
     
-    outfile.open((emptystr + "EFGR_CD.dat").c_str());
+    outfile.open((emptystr + "CD_EFGR_nm_" + nameapp + ".dat").c_str());
     for (i=nn-shift_f; i<nn; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     for (i=0; i<nn-shift_f; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
     
-    if (49 - shift_f < 0) {
-        cout << corr1_orig[nn-shift_f+49]*LEN*DeltaT*DAcoupling*DAcoupling<<"\t";//at omega_DA=3
-    }
-    else {
-        cout << corr1_orig[49-shift_f]*LEN*DeltaT*DAcoupling*DAcoupling<<"\t";//at omega_DA=3
-    }
+    //if (49 - shift_f < 0) {
+    //    cout << corr1_orig[nn-shift_f+49]*LEN*DeltaT*DAcoupling*DAcoupling<<"\t";//at omega_DA=3
+    //}
+    //else {
+    //    cout << corr1_orig[49-shift_f]*LEN*DeltaT*DAcoupling*DAcoupling<<"\t";//at omega_DA=3
+    //}
     
 
     //case [5] - [6]: marcus-levich(W-0) and marcus limits
     double df= 1.0/LEN/DeltaT;
     double dE = df * 2 * pi;
-    outfile.open("EFGR_marcus-levich.dat");
+    outfile.open((emptystr + "MarcusLevich_EFGR_nm_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) {
         outfile << sqrt(pi/a_parameter) * exp(-(dE*i*hbar-Er)*(dE*i*hbar-Er)/(4 * hbar*a_parameter))*DAcoupling*DAcoupling <<endl;
-        if (i == 49) cout << sqrt(pi/a_parameter) * exp(-(dE*i*hbar-Er)*(dE*i*hbar-Er)/(4 * hbar*a_parameter))*DAcoupling*DAcoupling<<"\t";//at omega_DA=3
+        //if (i == 49) cout << sqrt(pi/a_parameter) * exp(-(dE*i*hbar-Er)*(dE*i*hbar-Er)/(4 * hbar*a_parameter))*DAcoupling*DAcoupling<<"\t";//at omega_DA=3
     }
     outfile.close();
     outfile.clear();
     
-    outfile.open("EFGR_marcus.dat");
+    outfile.open((emptystr + "Marcus_EFGR_nm_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) {
         outfile << sqrt(beta*pi/Er) * exp(-beta*(dE*i*hbar-Er)*(dE*i*hbar-Er)/(4 * Er))*DAcoupling*DAcoupling << endl;
-        if (i == 49) cout << sqrt(beta*pi/Er) * exp(-beta*(dE*i*hbar-Er)*(dE*i*hbar-Er)/(4 * Er))*DAcoupling*DAcoupling << endl;
+        //if (i == 49) cout << sqrt(beta*pi/Er) * exp(-beta*(dE*i*hbar-Er)*(dE*i*hbar-Er)/(4 * Er))*DAcoupling*DAcoupling << endl;
     }
     outfile.close();
     outfile.clear();
     
-    
-    double d_omega_DA = 2 * pi / LEN / DeltaT; //omega_DA griding size
-    
-    cout << endl;
-    cout << "===== Summary ===== " << endl;
-    cout << "d_omega_DA = " << d_omega_DA << endl;
-    cout << "Er = " << Er << endl;
-    cout << "a_parameter = " << a_parameter << endl;
+    case_count++;
 
+    cout << "CASE # " << case_count <<  " done:" << endl;
+    cout << "   beta = " << beta << endl;
+    cout << "    eta = " << eta << endl;
+    cout << "       Er = " << Er << endl;
+    cout << "       a_parameter = " << a_parameter << endl;
+    cout << "---------  ---------  ---------" << endl;
     
-
+    }
+    
     //-------------- Summary ----------------
-    
-    cout << "THERMAL CONDITION: " << endl;
+    cout << endl;
+    cout << "--------- Summary ---------- " << endl;
     cout << "normal modes n_omega = " << n_omega << endl;
-    cout << "beta = " << beta << endl;
-    cout << "eta = " << eta << endl;
-    //cout << "initial shift s = " << s << endl;
+    cout << "LEN = " << LEN << endl;
+    cout << "DeltaT = " << DeltaT << endl;
+    cout << "d_omega_DA = " << d_omega_DA << endl;
     cout << "--------- END of EFGR in Condon case --------" << endl;
  
-
 
     return 0;
 }
@@ -577,15 +542,6 @@ void Integrand_2cumu_inh(double omega, double t, double &re, double &im) {
     im = omega*t;
     return;
 }
-
-//noneq FGR
-
-void Integrand_NE_exact(double omega, double tp, double tau, double shift, double req, double &re, double &im) {//including Huang-Rhys factor S_j
-    re = omega*req*req*0.5*(1-cos(omega*tau))/tanh(beta*hbar*omega/2);
-    im = omega*req*req*0.5*sin(omega*tau) + omega*req*shift* (sin(omega*tp) - sin(omega*tp-omega*tau));
-    return;
-}
-
 
 double Integrate(double *data, int n, double dx){
     double I =0;
@@ -724,67 +680,11 @@ void FFT(int dir, int m, double *x, double *y)
     }
 
 
-void DFT(int dir, int m, double *x, double *y) {
-    /*
-     This code computes an in-place complex-to-complex DFT by direct approach
-     x and y are the real and imaginary arrays of N=2^m points.
-     dir =  1 gives forward transform
-     dir = -1 gives reverse transform
-     Formula: forward
-                 N-1
-                 ---
-             1   \           - i 2 pi k n / N
-     X(n) = ----  >   x(k) e                       = forward transform
-             1   /                                    n=0..N-1
-                 ---
-                 k=0
-     
-     Formula: reverse
-                 N-1
-                 ---
-              1  \           i 2 pi k n / N
-     X(n) =  ---  >   x(k) e                  = reverse transform
-              N  /                               n=0..N-1
-                 ---
-                 k=0
-     */
-    int n,i,j,k,N;
-
-    // Calculate the number of points
-    N = 1;
-    for (i=0;i<m;i++)
-        N *= 2;
-    
-    double *re = new double [N];
-    double *im = new double [N];
-    for (n = 0; n < N; n++) re[n] = im[n] = 0;
-    double w = 2 * pi / N;
-    
-    
-    if (abs(dir) != 1 ) cout << "error from DFT subroutine: dir ill defined"<< endl;
-    
-    for (n=0; n<N; n++) {
-        for (k=0; k<N; k++) {
-            re[n] += x[k] * cos(w*n*k) + dir * y[k] * sin(w*n*k);
-            im[n] += y[k] * cos(w*n*k) - dir * x[k] * sin(w*n*k);
-        }
-    }
-    
-    for (n=0; n<N; n++) {
-        x[n] = re[n];
-        y[n] = im[n];
-    }
-    
-    if (dir == -1)
-        for (n=0; n<N;n++) {
-            x[n] /= N;
-            y[n] /= N;
-        }
-    
-    delete [] re;
-    delete [] im;
-    return;
+double** Create_matrix(int row, int col) {
+    double **matrix = new double* [col];
+    matrix[0] = new double [col*row];
+    for (int i = 1; i < col; ++i)
+        matrix[i] = matrix[i-1] + row;
+    return matrix;
 }
-
-
 
