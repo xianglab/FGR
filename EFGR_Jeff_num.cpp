@@ -17,31 +17,30 @@ using namespace std;
 
 //*********** change parameter *********
 const int MCN = 5000;//Monte Carlo sampling rate
+double Omega = 0.2; //primary mode freq
 double beta = 1;//0.2;//1;//5;
 double eta = 1; //0.5;//1;//5;
-double Omega = 0.2; //primary mode freq
-const int n_omega = 200; //normal cases 200
-const double omega_max = 10;//15 or 20 for ohmic
-double DT=0.002; //MD time step
-//*********** **************** *********
-const int INIT_omega = 1; //first omega index
-const double DAcoupling = 0.1;
-double y_0 = 1.0; //shift of primary mode
-
-const double d_omega = omega_max / n_omega;//0.1;
-const double d_omega_eff = omega_max / n_omega;//0.05; //for effective SD sampling rate
-const double omega_c = 1; //cutoff freq for ohmic
-const int N = n_omega; //number of degrees of freedom
+const int n_omega = 1000; //normal cases 200
+const double omega_max = 15;//15 or 20 for ohmic
 const int LEN = 512;//1024;//512; //number of t choices
 const double DeltaT = 0.2;//0.3;//0.2; //FFT time sampling interval
-const double T0= -DeltaT*(LEN*0.5);
-const double hbar = 1;
-const double pi=3.14159265358979324;
-const double RT_2PI= sqrt(2*pi);
+double DT=0.002; //MD time step
+const double DAcoupling = 0.1;
+//*********** **************** *********
 
+const int INIT_omega = 1; //first omega index, =0 for normal modes, =1 for Jeff
+const double y_0 = 1.0; //shift of primary mode
+const double d_omega = omega_max / n_omega;//SD evenly sampling rate
+const double d_omega_eff = omega_max / n_omega;//for effective SD sampling rate
+const double omega_c = 1; //cutoff freq for ohmic
+const int N = n_omega; //number of degrees of freedom
+const double T0 = -DeltaT*(LEN*0.5);
+const double hbar = 1;
+const double pi =3.14159265358979324;
+const double RT_2PI = sqrt(2*pi);
 double DTSQ2 = DT * DT * 0.5;
 double DT2 = DT/2.0;
-double ABSDT= abs(DT);
+double ABSDT = abs(DT);
 
 //Declare Subroutines
 void FFT(int dir, int m, double *x, double *y); //Fast Fourier Transform, 2^m data
@@ -176,8 +175,6 @@ int main (int argc, char *argv[]) {
     double V[n_omega];
     double F[n_omega];
     double *du_accum = new double [LENMD];
-    double *linear_accum_re = new double [LENMD];
-    double *linear_accum_im = new double [LENMD];
     double sigma_x[n_omega];//standard deviation of position
     double sigma_p[n_omega];//standard deviation of velocity
     double integral_du[LEN];
@@ -267,9 +264,7 @@ int main (int argc, char *argv[]) {
         Job_finished(jobdone, j, MCN, startTime);
     }
     
-    
-    
-    //Analyze dynamics on average surface + wigner sampling (LSC)
+    //average Monte Carlo LSC (dynamics on average surface + wigner sampling)
     for (i = 0; i < LEN; i++) { //Monte Carlo averaging
         mc_re[i] /= MCN;
         mc_im[i] /= MCN;
@@ -340,7 +335,6 @@ int main (int argc, char *argv[]) {
     cout << "Omega (primary) = " << Omega << endl;
     cout << "n_omega = " << n_omega << endl;
     cout << "omega_max = " << omega_max << endl;
-    cout << "d_omega_eff = " << d_omega_eff << endl;
     cout << "beta = " << beta << endl;
     cout << "eta  = " << eta << endl;
     cout << "NMC = " << MCN << endl;
