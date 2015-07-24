@@ -748,7 +748,7 @@ void Linear_NE_exact(double omega, double tp, double tau,  double shift, double 
 void Linear_NE_LSC(double omega, double tp, double tau,  double shift, double req, double &re, double &im) {
     double Coth = 1.0 / tanh(beta*hbar*omega*0.5);
     re = shift*shift*cos(omega*tp)*cos(omega*tp-omega*tau) + Coth * hbar/omega*0.5*cos(omega*tau) - req*req* 0.5 * Coth * Coth * pow(sin(0.5*omega*tau),2) * (cos(4*omega*tp - 2*omega*tau) + cos(omega*tau)) ;
-    im = - 0.25*req*shift/omega * Coth * ( (1-cos(omega*tau))*sin(omega*tp) + sin(4*omega*tp-2*omega*tau) - 4* cos(3*omega*tp - 1.5*omega*tau)*sin(0.5*omega*tau) );
+    im = - 0.25*req*shift * Coth * ( (1-2*cos(omega*tau))*sin(omega*tp) + sin(omega*tp-2*omega*tau) - 4* cos(3*omega*tp - 1.5*omega*tau)*sin(0.5*omega*tau) );
     //re = shift*shift*cos(omega*tp)*cos(omega*tp-omega*tau) + Coth *( hbar/omega*0.5*cos(omega*tau) - req*req*0.5 * Coth * pow(sin(0.5*omega*tau),2) * (cos(4*omega*tp-2*omega*tau)+cos(omega*tau)) );
     //im = - Coth * 0.5*req*shift*sin(0.5*omega*tau) * ( cos(omega*tp-1.5*omega*tau)+ 2*cos(3*omega*tp-1.5*omega*tau) + cos(omega*tp+0.5*omega*tau) );
     return;
