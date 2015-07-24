@@ -180,16 +180,16 @@ int main (int argc, char *argv[]) {
     
     //BEGIN loop through thermal conditions
     int case_count(0);
-    //for (beta_index = 0; beta_index < bldim; beta_index++)
-    //    for (eta_index = 0; eta_index < eldim; eta_index++)
-    //{
-    //    beta = beta_list[beta_index];
-    //    eta = eta_list[eta_index];
-        ss.str("");
-        nameapp = "";
-        ss << "b" << beta;
-        ss << "e" << eta;
-        nameapp = ss.str();
+    for (beta_index = 0; beta_index < bldim; beta_index++)
+        for (eta_index = 0; eta_index < eldim; eta_index++)
+    {
+        beta = beta_list[beta_index];
+        eta = eta_list[eta_index];
+    ss.str("");
+    nameapp = "";
+    ss << "b" << beta;
+    ss << "e" << eta << "_";
+    nameapp = ss.str();
 
     
     //setting up spectral density for bath modes
@@ -215,8 +215,8 @@ int main (int argc, char *argv[]) {
         D_matrix[w][w] = pow(w*d_omega ,2);
     }
     //copy Hessian matrix to working matrix for diagonalization
-    for (i=0; i < dim; i++) {
-        for (j=0; j < dim; j++) {
+    for (i = 0; i < dim; i++) {
+        for (j = 0; j < dim; j++) {
             matrix[j][i] = D_matrix[i][j];
             //NOTE: switch i j to match with Fortran array memory index
         }
@@ -254,20 +254,19 @@ int main (int argc, char *argv[]) {
     outfile.clear();
     // ******** END of Normal mode analysis **************
 
-
-    //case [1]: exact for Noneq FGR in non-Condon case (linear coupling) using normal modes
     //we fix omega_DA, and scan tp = 0 - tp_max
     omega_DA = omega_DA_fix;
-
+    
     ss.str("");
     idstr = "";
     ss << "s" << s;
     ss << "w" << omega_DA ;
     idstr += ss.str();
     
+    
+    //case [1]: exact for Noneq FGR in non-Condon case (linear coupling) using normal modes
     outfile.open((emptystr+"Exact_k_NEFGRL_"+nameapp+idstr+".dat").c_str());
     outfile1.open((emptystr+"Exact_P_NEFGRL_"+nameapp+idstr+".dat").c_str());
-    
     sum=0;
     kneq=0;
     for (tp = 0; tp < tp_max; tp += Deltatp) {
@@ -276,15 +275,13 @@ int main (int argc, char *argv[]) {
         M = static_cast<int> (tp/DeltaTau);//update M for each tp
         for (m = 0; m < M; m++) {//tau index
             tau = m * DeltaTau;
-            integ_re[0] = 0;
-            integ_im[0] = 0;
             linear_accum_re = 0;
             linear_accum_im = 0;
             for (w = 0; w < n_omega; w++) {
                 Integrand_NE_exact(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]); //already multiplies S_array in Integrand_NE subroutine
                 Linear_NE_exact(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], linear_re, linear_im);
-                linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
-                linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
+                linear_accum_re += linear_re * gamma_nm[w] * gamma_nm[w];
+                linear_accum_im += linear_im * gamma_nm[w] * gamma_nm[w];
             }
             integral_re = Sum(integ_re, n_omega);
             integral_im = Sum(integ_im, n_omega);
@@ -305,15 +302,216 @@ int main (int argc, char *argv[]) {
     }
     outfile.close();
     outfile.clear();
-    
     outfile1.close();
     outfile1.clear();
     
-    //case [2]: LSC for NEFGRL
-    
+    //case [2]: LSC for Noneq FGR in non-Condon case (linear coupling) using normal modes
+    outfile.open((emptystr+"LSC_k_NEFGRL_"+nameapp+idstr+".dat").c_str());
+    outfile1.open((emptystr+"LSC_P_NEFGRL_"+nameapp+idstr+".dat").c_str());
+    sum=0;
+    kneq=0;
+    for (tp = 0; tp < tp_max; tp += Deltatp) {
+        kre = 0;
+        kim = 0;
+        M = static_cast<int> (tp/DeltaTau);//update M for each tp
+        for (m = 0; m < M; m++) {//tau index
+            tau = m * DeltaTau;
+            linear_accum_re = 0;
+            linear_accum_im = 0;
+            for (w = 0; w < n_omega; w++) {
+                Integrand_NE_exact(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]); //already multiplies S_array in Integrand_NE subroutine
+                Linear_NE_LSC(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], linear_re, linear_im);
+                linear_accum_re += linear_re * gamma_nm[w] * gamma_nm[w];
+                linear_accum_im += linear_im * gamma_nm[w] * gamma_nm[w];
+            }
+            integral_re = Sum(integ_re, n_omega);
+            integral_im = Sum(integ_im, n_omega);
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            C_re = temp_re * linear_accum_re - temp_im * linear_accum_im;
+            C_im = temp_re * linear_accum_im + temp_im * linear_accum_re;
+            kre += C_re * cos(omega_DA*tau) - C_im * sin(omega_DA*tau);
+            kim += C_re * sin(omega_DA*tau) + C_im * cos(omega_DA*tau);
+        }
+        kre *= DeltaTau;
+        kim *= DeltaTau;
+        kneq = kre*2*DAcoupling*DAcoupling;
+        outfile << kneq << endl;
+        sum += kneq * Deltatp;//probability of donor state
+        //outfile1 << 1 - sum << endl; //1 - int dt' k(t')
+        outfile1 << exp(-1*sum) << endl; //exp(- int dt' k(t'))
+    }
+    outfile.close();
+    outfile.clear();
+    outfile1.close();
+    outfile1.clear();
 
+    //case [3]: CAV for Noneq FGR in non-Condon case (linear coupling) using normal modes
+    outfile.open((emptystr+"CAV_k_NEFGRL_"+nameapp+idstr+".dat").c_str());
+    outfile1.open((emptystr+"CAV_P_NEFGRL_"+nameapp+idstr+".dat").c_str());
+    sum=0;
+    kneq=0;
+    for (tp = 0; tp < tp_max; tp += Deltatp) {
+        kre = 0;
+        kim = 0;
+        M = static_cast<int> (tp/DeltaTau);//update M for each tp
+        for (m = 0; m < M; m++) {//tau index
+            tau = m * DeltaTau;
+            linear_accum_re = 0;
+            linear_accum_im = 0;
+            for (w = 0; w < n_omega; w++) {
+                Integrand_NE_CAV(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]); //already multiplies S_array in Integrand_NE subroutine
+                Linear_NE_CAV(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], linear_re, linear_im);
+                linear_accum_re += linear_re * gamma_nm[w] * gamma_nm[w];
+                linear_accum_im += linear_im * gamma_nm[w] * gamma_nm[w];
+            }
+            integral_re = Sum(integ_re, n_omega);
+            integral_im = Sum(integ_im, n_omega);
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            C_re = temp_re * linear_accum_re - temp_im * linear_accum_im;
+            C_im = temp_re * linear_accum_im + temp_im * linear_accum_re;
+            kre += C_re * cos(omega_DA*tau) - C_im * sin(omega_DA*tau);
+            kim += C_re * sin(omega_DA*tau) + C_im * cos(omega_DA*tau);
+        }
+        kre *= DeltaTau;
+        kim *= DeltaTau;
+        kneq = kre*2*DAcoupling*DAcoupling;
+        outfile << kneq << endl;
+        sum += kneq * Deltatp;//probability of donor state
+        //outfile1 << 1 - sum << endl; //1 - int dt' k(t')
+        outfile1 << exp(-1*sum) << endl; //exp(- int dt' k(t'))
+    }
+    outfile.close();
+    outfile.clear();
+    outfile1.close();
+    outfile1.clear();
     
-        
+    
+    //case [4]: CD for Noneq FGR in non-Condon case (linear coupling) using normal modes
+    outfile.open((emptystr+"CD_k_NEFGRL_"+nameapp+idstr+".dat").c_str());
+    outfile1.open((emptystr+"CD_P_NEFGRL_"+nameapp+idstr+".dat").c_str());
+    sum=0;
+    kneq=0;
+    for (tp = 0; tp < tp_max; tp += Deltatp) {
+        kre = 0;
+        kim = 0;
+        M = static_cast<int> (tp/DeltaTau);//update M for each tp
+        for (m = 0; m < M; m++) {//tau index
+            tau = m * DeltaTau;
+            linear_accum_re = 0;
+            linear_accum_im = 0;
+            for (w = 0; w < n_omega; w++) {
+                Integrand_NE_CD(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]); //already multiplies S_array in Integrand_NE subroutine
+                Linear_NE_CD(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], linear_re, linear_im);
+                linear_accum_re += linear_re * gamma_nm[w] * gamma_nm[w];
+                linear_accum_im += linear_im * gamma_nm[w] * gamma_nm[w];
+            }
+            integral_re = Sum(integ_re, n_omega);
+            integral_im = Sum(integ_im, n_omega);
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            C_re = temp_re * linear_accum_re - temp_im * linear_accum_im;
+            C_im = temp_re * linear_accum_im + temp_im * linear_accum_re;
+            kre += C_re * cos(omega_DA*tau) - C_im * sin(omega_DA*tau);
+            kim += C_re * sin(omega_DA*tau) + C_im * cos(omega_DA*tau);
+        }
+        kre *= DeltaTau;
+        kim *= DeltaTau;
+        kneq = kre*2*DAcoupling*DAcoupling;
+        outfile << kneq << endl;
+        sum += kneq * Deltatp;//probability of donor state
+        //outfile1 << 1 - sum << endl; //1 - int dt' k(t')
+        outfile1 << exp(-1*sum) << endl; //exp(- int dt' k(t'))
+    }
+    outfile.close();
+    outfile.clear();
+    outfile1.close();
+    outfile1.clear();
+    
+    //case [5]: W0 for Noneq FGR in non-Condon case (linear coupling) using normal modes
+    outfile.open((emptystr+"inh_k_NEFGRL_"+nameapp+idstr+".dat").c_str());
+    outfile1.open((emptystr+"inh_P_NEFGRL_"+nameapp+idstr+".dat").c_str());
+    sum=0;
+    kneq=0;
+    for (tp = 0; tp < tp_max; tp += Deltatp) {
+        kre = 0;
+        kim = 0;
+        M = static_cast<int> (tp/DeltaTau);//update M for each tp
+        for (m = 0; m < M; m++) {//tau index
+            tau = m * DeltaTau;
+            linear_accum_re = 0;
+            linear_accum_im = 0;
+            for (w = 0; w < n_omega; w++) {
+                Integrand_NE_W0(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]); //already multiplies S_array in Integrand_NE subroutine
+                Linear_NE_W0(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], linear_re, linear_im);
+                linear_accum_re += linear_re * gamma_nm[w] * gamma_nm[w];
+                linear_accum_im += linear_im * gamma_nm[w] * gamma_nm[w];
+            }
+            integral_re = Sum(integ_re, n_omega);
+            integral_im = Sum(integ_im, n_omega);
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            C_re = temp_re * linear_accum_re - temp_im * linear_accum_im;
+            C_im = temp_re * linear_accum_im + temp_im * linear_accum_re;
+            kre += C_re * cos(omega_DA*tau) - C_im * sin(omega_DA*tau);
+            kim += C_re * sin(omega_DA*tau) + C_im * cos(omega_DA*tau);
+        }
+        kre *= DeltaTau;
+        kim *= DeltaTau;
+        kneq = kre*2*DAcoupling*DAcoupling;
+        outfile << kneq << endl;
+        sum += kneq * Deltatp;//probability of donor state
+        //outfile1 << 1 - sum << endl; //1 - int dt' k(t')
+        outfile1 << exp(-1*sum) << endl; //exp(- int dt' k(t'))
+    }
+    outfile.close();
+    outfile.clear();
+    outfile1.close();
+    outfile1.clear();
+    
+    //case [6]: W0 for Noneq FGR in non-Condon case (linear coupling) using normal modes
+    outfile.open((emptystr+"Marcus_k_NEFGRL_"+nameapp+idstr+".dat").c_str());
+    outfile1.open((emptystr+"Marcus_P_NEFGRL_"+nameapp+idstr+".dat").c_str());
+    sum=0;
+    kneq=0;
+    for (tp = 0; tp < tp_max; tp += Deltatp) {
+        kre = 0;
+        kim = 0;
+        M = static_cast<int> (tp/DeltaTau);//update M for each tp
+        for (m = 0; m < M; m++) {//tau index
+            tau = m * DeltaTau;
+            linear_accum_re = 0;
+            linear_accum_im = 0;
+            for (w = 0; w < n_omega; w++) {
+                Integrand_NE_Marcus(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], integ_re[w], integ_im[w]); //already multiplies S_array in Integrand_NE subroutine
+                Linear_NE_Marcus(omega_nm[w], tp, tau, shift_NE[w], req_nm[w], linear_re, linear_im);
+                linear_accum_re += linear_re * gamma_nm[w] * gamma_nm[w];
+                linear_accum_im += linear_im * gamma_nm[w] * gamma_nm[w];
+            }
+            integral_re = Sum(integ_re, n_omega);
+            integral_im = Sum(integ_im, n_omega);
+            temp_re = exp(-1 * integral_re) * cos(integral_im);
+            temp_im = exp(-1 * integral_re) * sin(-1 * integral_im);
+            C_re = temp_re * linear_accum_re - temp_im * linear_accum_im;
+            C_im = temp_re * linear_accum_im + temp_im * linear_accum_re;
+            kre += C_re * cos(omega_DA*tau) - C_im * sin(omega_DA*tau);
+            kim += C_re * sin(omega_DA*tau) + C_im * cos(omega_DA*tau);
+        }
+        kre *= DeltaTau;
+        kim *= DeltaTau;
+        kneq = kre*2*DAcoupling*DAcoupling;
+        outfile << kneq << endl;
+        sum += kneq * Deltatp;//probability of donor state
+        //outfile1 << 1 - sum << endl; //1 - int dt' k(t')
+        outfile1 << exp(-1*sum) << endl; //exp(- int dt' k(t'))
+    }
+    outfile.close();
+    outfile.clear();
+    outfile1.close();
+    outfile1.clear();
+    
+    
     case_count++;
 
     //-------------- Summary ----------------
@@ -324,7 +522,7 @@ int main (int argc, char *argv[]) {
     cout << "-------------------" << endl;
     
     
-    //}
+    }
     
     
     
@@ -549,13 +747,23 @@ void Linear_NE_exact(double omega, double tp, double tau,  double shift, double 
 
 void Linear_NE_LSC(double omega, double tp, double tau,  double shift, double req, double &re, double &im) {
     double Coth = 1.0 / tanh(beta*hbar*omega*0.5);
-    re = shift*shift*cos(omega*tp)*cos(omega*tp-omega*tau) + Coth *( hbar/omega*0.5*cos(omega*tau) - req*req*0.5*Coth * pow(sin(0.5*omega*tau),2) * (cos(4*omega*tp-2*omega*tau)+cos(omega*tau)) );
-    im = - Coth * 0.5*req*shift*sin(0.5*omega*tau) * ( cos(omega*tp-1.5*omega*tau)+ 2*cos(3*omega*tp-1.5*omega*tau) + cos(omega*tp+0.5*omega*tau) );
+    re = shift*shift*cos(omega*tp)*cos(omega*tp-omega*tau) + Coth * hbar/omega*0.5*cos(omega*tau) - req*req* 0.5 * Coth * Coth * pow(sin(0.5*omega*tau),2) * (cos(4*omega*tp - 2*omega*tau) + cos(omega*tau)) ;
+    im = - 0.25*req*shift/omega * Coth * ( (1-cos(omega*tau))*sin(omega*tp) + sin(4*omega*tp-2*omega*tau) - 4* cos(3*omega*tp - 1.5*omega*tau)*sin(0.5*omega*tau) );
+    //re = shift*shift*cos(omega*tp)*cos(omega*tp-omega*tau) + Coth *( hbar/omega*0.5*cos(omega*tau) - req*req*0.5 * Coth * pow(sin(0.5*omega*tau),2) * (cos(4*omega*tp-2*omega*tau)+cos(omega*tau)) );
+    //im = - Coth * 0.5*req*shift*sin(0.5*omega*tau) * ( cos(omega*tp-1.5*omega*tau)+ 2*cos(3*omega*tp-1.5*omega*tau) + cos(omega*tp+0.5*omega*tau) );
     return;
 }
 
 
 void Linear_NE_CAV(double omega, double tp, double tau,  double shift, double req, double &re, double &im) {
+    double cc, ss, dss, dcc;
+    cc = cos(omega*tp) * cos(omega*tp-omega*tau);
+    ss = sin(omega*tp) * sin(omega*tp-omega*tau);
+    dcc = cos(omega*tp) - cos(omega*tp-omega*tau);
+    dss = sin(omega*tp) - sin(omega*tp-omega*tau);
+    re = shift*shift * cc + 2*req*req / pow(beta*hbar*omega, 2) * sin(omega*tp-0.5*omega*tau) * sin(omega*tp-0.5*omega*tau) * dss * dss + ss/(beta*beta*omega*omega)* (beta - req*req/hbar/hbar*dcc*dcc) + cc/(beta*beta*omega*omega)* (beta - req*req/hbar/hbar*dss*dss);
+    im = 2*req*shift /(beta*hbar*omega)* dss * cos(0.5*omega*tau) * cos(0.5*omega*tau);
+    /*
     double tre, tim, coef, last_term;
     tre = beta * omega * shift;
     tim = req /hbar * ( sin(omega*tp-omega*tau) - sin(omega*tp) );
@@ -563,6 +771,7 @@ void Linear_NE_CAV(double omega, double tp, double tau,  double shift, double re
     last_term = sin(omega*tp)*sin(omega*tp-omega*tau)/ (beta*beta*omega*omega) * (beta - req*req/hbar/hbar * pow(cos(omega*tp)-cos(omega*tp-omega*tau),2) );
     re = cos(omega*tp)*cos(omega*tp-omega*tau) / (beta*beta*omega*omega) * (beta + tre*tre - tim*tim) + coef * req * ( sin(omega*tp) - sin(omega*tp-omega*tau) ) + last_term;
     im = cos(omega*tp)*cos(omega*tp-omega*tau) / (beta*beta*omega*omega) * (2*tre*tim) + coef * beta*hbar*omega*shift;
+     */
     return;
 }
 
