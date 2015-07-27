@@ -16,7 +16,7 @@
 using namespace std;
 
 //*********** change parameter *********
-const int MCN = 5000;//Monte Carlo sampling rate
+const int MCN = 50000;//Monte Carlo sampling rate
 double Omega = 0.2; //primary mode freq
 double beta = 1;//0.2;//1;//5;
 double eta = 1; //0.5;//1;//5;
