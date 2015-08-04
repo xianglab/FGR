@@ -20,11 +20,11 @@ const int eldim = 3;
 double beta_list[bldim] = {0.2, 1.0, 5.0};  //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
 double eta_list[eldim] = {0.5, 1.0, 5.0}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
 double Omega = 0.2;//0.5; //primary mode freq 0.2, 0.5, 1
-double y_0 = 10;//10;//sqrt(10.0);//1.0; //shift of primary mode
+double y_0 = 1;//sqrt(10);//10;//sqrt(10.0);//1.0; //shift of primary mode
 const double omega_max = 15;//20;//15 or 20 for Jeff
-const int n_omega = 1000;//200;//10000; //100;
+const int n_omega = 10000;//200;//10000; //100;
 const int LEN = 1024;//512; //number of t choices
-const double DeltaT = 0.15;//0.3;//0.2; //FFT time sampling interval
+const double DeltaT = 0.2;//0.3;//0.2; //FFT time sampling interval
 // *********** **************** *********
 
 
