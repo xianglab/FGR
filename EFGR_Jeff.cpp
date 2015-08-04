@@ -14,20 +14,26 @@
 #include <cmath>
 using namespace std;
 
+// *********** change parameters *********
+const int bldim = 3;
+const int eldim = 3;
+double beta_list[bldim] = {0.2, 1.0, 5.0};  //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
+double eta_list[eldim] = {0.5, 1.0, 5.0}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
+double Omega = 0.2;//0.5; //primary mode freq 0.2, 0.5, 1
+double y_0 = 10;//10;//sqrt(10.0);//1.0; //shift of primary mode
+const double omega_max = 15;//20;//15 or 20 for Jeff
+const int n_omega = 1000;//200;//10000; //100;
+const int LEN = 1024;//512; //number of t choices
+const double DeltaT = 0.15;//0.3;//0.2; //FFT time sampling interval
+// *********** **************** *********
+
+
 double beta = 1;//0.2, 0.5;//1;//5;
 double eta = 1; //0.5;//1;//5;
 const double DAcoupling = 0.1;
-double Omega = 1; //primary mode freq
-double y_0 = 1.0; //shift of primary mode
-
-const double omega_max = 15;//20;//15 or 20 for Jeff
-const int n_omega = 1000;//200;//10000; //100;
 const double d_omega = omega_max / n_omega;//0.1;
 const double d_omega_eff = omega_max / n_omega;//0.05; //for effective SD sampling rate
 const double omega_c = 1; //cutoff freq for ohmic
-
-const int LEN = 512;//1024;//512; //number of t choices
-const double DeltaT = 0.2;//0.3;//0.2; //FFT time sampling interval
 const double T0= -DeltaT*(LEN*0.5);
 const double hbar = 1;
 const double pi=3.14159265358979324;
@@ -66,7 +72,7 @@ int main (int argc, char *argv[]) {
     string emptystr("");
     string filename("");
     string idstr("");
-    
+    string nameapp("");
     
     int mm(0), nn(1); // nn = 2^mm is number of (complex) data to FFT
     
@@ -90,6 +96,7 @@ int main (int argc, char *argv[]) {
     
     ofstream outfile;
     ofstream outfile1;
+    ofstream outfile2;
     
     double integral_re, integral_im;
     integral_re = integral_im = 0;
@@ -118,14 +125,38 @@ int main (int argc, char *argv[]) {
     double a_parameter(0);
     double a_parameter_eff(0);
     
+    double tau_c(0);
+    int shift_index = static_cast<int>(-shift);
+    
+    int beta_index(0);
+    int eta_index(0);
+    
+    cout << "---------- Eq FGR in Condon case ----------" << endl;
+    outfile2.open((emptystr + "Tau_c_EFGR_Jeff.dat").c_str());
+    // Part I - Using exact discrete normal modes
+    
+    //BEGIN loop through thermal conditions
+    int case_count(0);
+    for (beta_index = 0; beta_index < bldim; beta_index++)
+    for (eta_index = 0; eta_index < eldim; eta_index++)
+    {
+        beta = beta_list[beta_index];
+        eta = eta_list[eta_index];
+        ss.str("");
+        nameapp = "";
+        ss << "b" << beta;
+        ss << "e" << eta;
+        nameapp = ss.str();
+            
+            
     //setting up spectral density
     for (w = 1; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff(w*d_omega_eff, eta);//Jeff1
     for (w = 1; w < n_omega; w++) J_eff2[w] = J_omega_ohmic(w*d_omega_eff, eta); //Jeff2
     
-    outfile1.open("J_eff(omega).dat");
-    for (w = 1; w< n_omega; w++) outfile1 << J_eff[w] << endl;
-    outfile1.close();
-    outfile1.clear();
+    //outfile1.open("J_eff(omega).dat");
+    //for (w = 1; w< n_omega; w++) outfile1 << J_eff[w] << endl;
+    //outfile1.close();
+    //outfile1.clear();
     
     Er_eff_RRww = 0;
     Er_eff_Jw = 0;
@@ -144,20 +175,20 @@ int main (int argc, char *argv[]) {
     }
     //cout << "Er_eff = " << Er_eff << endl;
     
-    cout << "Er_eff_Jw   = " << Er_eff_Jw << endl;
-    cout << "Er_eff_RRww = " << Er_eff_RRww << endl;
+    //cout << "Er_eff_Jw   = " << Er_eff_Jw << endl;
+    //cout << "Er_eff_RRww = " << Er_eff_RRww << endl;
     //outfile << Er_eff_Jw  << endl;
     
     Er_eff = Er_eff_Jw;
     
-    cout << "a_parameter_eff = " << a_parameter_eff << endl;
+    //cout << "a_parameter_eff = " << a_parameter_eff << endl;
 
     
     
     //=============case: [1] Eq FGR using continuous SD J_eff(\omega)=============
     
     //[a] Exact or LSC approximation using Jeff
-    outfile1.open("Integral_Jeff.dat");
+    //outfile1.open("Integral_Jeff.dat");
     
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
@@ -176,12 +207,15 @@ int main (int argc, char *argv[]) {
         //integral_re = Integrate(integ_re, n_omega, d_omega_eff);
         //integral_im = Integrate(integ_im, n_omega, d_omega_eff);
         
-        outfile1 << integral_re << "\t" << integral_im << endl;
+        //outfile1 << integral_re << "\t" << integral_im << endl;
         
         corr1[i] = exp(-1 * integral_re) * cos(integral_im);
         corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
     }
     
+    tau_c = 0.5 * Integrate(corr1, nn, DeltaT) / corr1[shift_index];
+    outfile2 << tau_c << endl;
+        
     FFT(-1, mm, corr1, corr2);//notice its inverse FT
     
     for(i=0; i<nn; i++) { //shift time origin
@@ -189,14 +223,14 @@ int main (int argc, char *argv[]) {
         corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
     }
     
-    outfile.open("Exact_EFGR_Jeff.dat");
+    outfile.open((emptystr + "QMLSC_EFGR_Jeff_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-    outfile1.close();
-    outfile1.clear();
+    //outfile1.close();
+    //outfile1.clear();
     
-    
+    /*
     //[a'] Exact or LSC approximation using Jeff2
     outfile1.open("Integral_Jeff2.dat");
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
@@ -235,7 +269,7 @@ int main (int argc, char *argv[]) {
     outfile.clear();
     outfile1.close();
     outfile1.clear();
-    
+    */
     
     //[b] inh approximation
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
@@ -263,7 +297,8 @@ int main (int argc, char *argv[]) {
         corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
     }
     
-    outfile.open("inh_EFGR_Jeff.dat");
+    outfile.open((emptystr + "W0_EFGR_Jeff_" + nameapp + ".dat").c_str());
+    //outfile.open("inh_EFGR_Jeff.dat");
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
@@ -295,7 +330,7 @@ int main (int argc, char *argv[]) {
         corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
     }
     
-    outfile.open("CAV_EFGR_Jeff.dat");
+    outfile.open((emptystr + "CAV_EFGR_Jeff_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
@@ -332,7 +367,7 @@ int main (int argc, char *argv[]) {
     int shift_f(0);
     shift_f = static_cast<int> (Er_eff/(1.0/LEN/DeltaT)/(2*pi)+0.5);
     
-    outfile.open("CD_EFGR_Jeff.dat");
+    outfile.open((emptystr + "CD_EFGR_Jeff_" + nameapp + ".dat").c_str());
     for (i=nn-shift_f; i<nn; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     for (i=0; i<nn-shift_f; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
@@ -374,30 +409,40 @@ int main (int argc, char *argv[]) {
     //[e'] Marcus and Marcus-Levich approximation
     double df= 1.0/LEN/DeltaT;
     double dE = df * 2 * pi;
-    outfile.open("Marcus-levich_EFGR_Jeff.dat");
+    //outfile.open("Marcus-levich_EFGR_Jeff.dat");
+    outfile.open((emptystr + "MarcusLevich_EFGR_Jeff_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << sqrt(pi/a_parameter_eff) * exp(-(dE*i*hbar-Er_eff)*(dE*i*hbar-Er_eff)/(4 * hbar*a_parameter_eff))*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
     
-    outfile.open("Marcus_EFGR_Jeff.dat");
+    outfile.open((emptystr + "Marcus_EFGR_Jeff_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << sqrt(beta*pi/Er_eff) * exp(-beta*(dE*i*hbar-Er_eff)*(dE*i*hbar-Er_eff)/(4 * Er_eff))*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
     
+        
+    case_count++;
     
-    cout << " df = " << df << endl;
-    cout << " d omega_{DA} = " << dE << endl;
+    cout << "CASE # " << case_count <<  " done:" << endl;
+    cout << "   beta = " << beta << endl;
+    cout << "   eta = " << eta << endl;
+    cout << "   Er_eff = " << Er_eff << endl;
+    cout << "   a_parameter_eff = " << a_parameter_eff << endl;
+    cout << "   df = " << df << endl;
+    cout << "---------  ---------  ---------" << endl;
+        
+    }
     
+    cout << "For all cases:" << endl;
+    cout << "Omega =  " << Omega << endl;
+    cout << "y0 = " << y_0 << endl;
+    cout << "LEN = " << LEN << endl;
+    cout << "DeltaT = " << DeltaT << endl;
     
+    outfile2.close();
+    outfile2.clear();
     
-    
-    
-    
-    
-    
-    
-    
-    
+    /*
     // ********** BEGIN of Normal mode analysis ***********
     
     //Dimension of matrix (Check this every time)
@@ -494,25 +539,6 @@ int main (int argc, char *argv[]) {
     for (i=0; i < dim; i++)
         for (j=0; j < dim; j++) TT_ns[i][j] = matrix[i][j];
     
-    /*
-     cout << "diagonalized Hessian matrix: " << endl;
-     for (i=0; i < dim; i++) {
-     for (j=0; j < dim; j++) {
-     for (a=0; a < dim; a++)
-     for (b=0; b < dim; b++) Diag_matrix[i][j] += TT_ns[i][a]*D_matrix[a][b]*TT_ns[j][b]; //TT_ns * D * T_sn
-     cout << Diag_matrix[i][j] << "    " ;
-     }
-     cout << endl;
-     }
-     
-     cout << endl;
-     cout << "transformation matrix TT_ns (TT_ns * D * T_sn = diag, eigenvectors are row-vector of TT_ns): " << endl;
-     for (i=0; i < dim; i++) {
-     for (j=0; j < dim; j++) cout << TT_ns[i][j] << "    " ;
-     cout << endl;
-     }
-    */
-    
     // the coefficients of linear electronic coupling in normal modes (gamma[j]=TT_ns[j][0]*gamma_y), here gamma_y=1
     double gamma_nm[n_omega];
     for (i=0; i<n_omega; i++) gamma_nm[i] = TT_ns[i][0];
@@ -598,9 +624,7 @@ int main (int argc, char *argv[]) {
     outfile.clear();
     outfile1.close();
     outfile1.clear();
-    
-    
-    
+
     //-------------- Summary ----------------
     
     cout << "-----THERMAL CONDITION------- " << endl;
@@ -612,7 +636,7 @@ int main (int argc, char *argv[]) {
     cout << "eta  = " << eta << endl;
     //cout << "initial shift s = " << s << endl;
     cout << "--------- END of EFGR in Condon case --------" << endl;
-    
+    */
     
     
     return 0;
@@ -646,7 +670,7 @@ double J_omega_ohmic(double omega, double etaa) {
 double J_omega_ohmic_eff(double omega, double etaa) {
     //(normal mode) effective SD for Ohmic bath DOF
     //J_omega = pi/2 * sum_a c_a^2 / omega_a delta(omega - omega_a)
-    return etaa * omega * pow(Omega,4) / ( pow(Omega*Omega - omega*omega, 2) + etaa*etaa*omega*omega);
+    return etaa * omega * pow(Omega,4) *y_0*y_0 / ( pow(Omega*Omega - omega*omega, 2) + etaa*etaa*omega*omega);
 }
 
 //min-to-min energy as Fourier transform frequency
