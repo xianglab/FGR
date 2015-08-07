@@ -84,13 +84,23 @@ int main (int argc, char *argv[]) {
     double *integ_im = new double [n_omega];
     
     ofstream outfile;
+    ofstream outfile2;
+    outfile2.open((emptystr + "Tau_c_EFGR_Gauss.dat").c_str());
     
     double integral_re, integral_im;
     integral_re = integral_im = 0;
     
+    double shift = T0 / DeltaT;
+    double N = nn;
+    //cout << "shift = " << shift << endl;
+    
+    double tau_c(0);
+    int shift_index = static_cast<int>(-shift);
+    
     double Er=0;
     double a_parameter=0;
     double *SD = new double [n_omega];
+    double *integrand = new double [n_omega];
     
     int beta_index;
     int eta_index;
@@ -120,7 +130,7 @@ int main (int argc, char *argv[]) {
     //outfile.clear();
     
     
-    double *integrand = new double [n_omega];
+    
     for (w = 0; w < n_omega; w++) integrand[w] = SD[w] * w *d_omega;
     integrand[0]=0;
     Er = Integrate(integrand, n_omega, d_omega);
@@ -134,12 +144,7 @@ int main (int argc, char *argv[]) {
     cout << "a_parameter = " << a_parameter << endl;
     
     
-    double shift = T0 / DeltaT;
-    double N = nn;
-    //cout << "shift = " << shift << endl;
-    
-     
-    //min-to-min energy Fourier frequency
+     //min-to-min energy Fourier frequency
     
     //LSC approximation
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
@@ -159,7 +164,21 @@ int main (int argc, char *argv[]) {
         corr1[i] = exp(-1 * integral_re) * cos(integral_im);
         corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
     }
+        
+    //tau_c = 0.5 * Integrate(corr1, nn, DeltaT)  / corr1[shift_index];
+    //tau_c = 0.5 * (Integrate(corr1, nn, DeltaT) - corr1[1]*nn*DeltaT) / (corr1[shift_index]-corr1[1]); //subtract plateau value of Real part of C(t)??
+    //outfile2 << tau_c << endl;
+        
+    outfile.open((emptystr + "QMLSC_EFGR_t_re" + nameapp + ".dat").c_str());
+    for (i=0; i < LEN; i++) outfile << corr1[i] << endl;
+    outfile.close();
+    outfile.clear();
     
+    outfile.open((emptystr + "QMLSC_EFGR_t_im" + nameapp + ".dat").c_str());
+    for (i=0; i < LEN; i++) outfile << corr2[i] << endl;
+    outfile.close();
+    outfile.clear();
+        
     FFT(-1, mm, corr1, corr2);//notice its inverse FT
 
     for(i=0; i<nn; i++) { //shift time origin 
@@ -413,7 +432,7 @@ int main (int argc, char *argv[]) {
     
     
     cout << "DeltaT = " << DeltaT << endl;
-    cout << "N = " << LEN << endl;
+    cout << "LEN = " << LEN << endl;
     cout << "df = " << 1.0/LEN/DeltaT << endl;
     cout << "f_max = " << 0.5/DeltaT << endl;
     
