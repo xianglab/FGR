@@ -13,28 +13,26 @@
 #include <cmath>
 using namespace std;
 
+// *********** PARAMETERS *************
+double omega_DA_fix = 2; //fixed omega_DA, with scan tp
+double s = 3; //Noneq. initial shift of parimary mode
+double Omega = 0.5; //primary mode freq
+double y_0 = 1; //shift of primary mode
+const int n_omega = 100; // total num of modes
+const double omega_max = 10;//20;//2.5 for gaussian// 20 for ohmic
+const double DeltaTau =0.002; //time slice for t' griding
+const double tp_max = 40; //scanning tp option, DeltaTau as step
+const double Deltatp = 0.2;
 const int bldim = 3;
 const int eldim = 3;
 double beta_list[bldim] = {0.2, 1, 5};//{0.2, 1.0, 5.0};
 double eta_list[eldim] = {0.5, 1, 5};//{0.2, 1.0, 5.0};
-double omega_DA_fix = 3; //fixed omega_DA, with scan tp
+// ************************************
 
-double beta = 1;//0.2;//1;//5;
-double eta  = 1; //0.2;//1;//5;
+double beta = 0.2;//0.2;//1;//5;
+double eta  = 0.5; //0.2;//1;//5;
 const double DAcoupling = 0.1;
-double s = 1; //Noneq. initial shift of parimary mode
 double tp_fix = 5; //fixed t' for noneq FGR rate k(t',omega_DA) with scan omega_DA
-
-
-const double DeltaTau =0.002; //time slice for t' griding
-const double tp_max = 40; //scanning tp option, DeltaTau as step
-const double Deltatp = 0.2;
-
-double Omega = 0.5; //primary mode freq
-double y_0 = 1; //shift of primary mode
-
-const int n_omega = 100;
-const double omega_max = 10;//20;//2.5 for gaussian// 20 for ohmic
 const double d_omega = omega_max / n_omega;//0.1;//0.002;for gaussian//0.1; for ohmic
 const double d_omega_eff = omega_max / n_omega; //for effective SD sampling rate
 
