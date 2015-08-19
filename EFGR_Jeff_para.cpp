@@ -22,10 +22,10 @@ double eta_list[eldim] = {3.43};//{0.0536};
 double Omega = 1;//0.5; //primary mode freq 0.2, 0.5, 1
 double y_0 = 5.84;//1.0; //shift of primary mode
 const double DAcoupling = 0.143;
-const double omega_max = 15;//20;//15 or 20 for Jeff
+const double omega_max = 300;//20;//15 or 20 for Jeff
 const int n_omega = 10000;//10000;//200;//10000; //100;
-const int LEN = 2048;//1024;//512; //number of t choices
-const double DeltaT = 0.015;//0.3;//0.2; //FFT time sampling interval
+const int LEN = 1024;//1024;//512; //number of t choices
+const double DeltaT = 0.004;//0.3;//0.2; //FFT time sampling interval
 // *********** **************** *********
 
 
@@ -188,7 +188,7 @@ int main (int argc, char *argv[]) {
     //=============case: [1] Eq FGR using continuous SD J_eff(\omega)=============
     
     //[a] Exact or LSC approximation using Jeff
-    //outfile1.open("Integral_Jeff.dat");
+    outfile1.open("QMLSC_EFGR_Jeff_tre.dat");
     
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
@@ -211,6 +211,8 @@ int main (int argc, char *argv[]) {
         
         corr1[i] = exp(-1 * integral_re) * cos(integral_im);
         corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
+        
+        outfile1 << corr1[i] << endl;
     }
     
     tau_c = 0.5 * Integrate(corr1, nn, DeltaT) / corr1[shift_index];
@@ -227,8 +229,8 @@ int main (int argc, char *argv[]) {
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-    //outfile1.close();
-    //outfile1.clear();
+    outfile1.close();
+    outfile1.clear();
     
     /*
     //[a'] Exact or LSC approximation using Jeff2
