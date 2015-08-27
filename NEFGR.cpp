@@ -14,19 +14,19 @@
 using namespace std;
 
 // *********** PARAMETERS *************
-double omega_DA_fix = 2; //fixed omega_DA, with scan tp
-double s = 3; //Noneq. initial shift of parimary mode
+double omega_DA_fix = 0; //fixed omega_DA, with scan tp
+double s = -3; //Noneq. initial shift of parimary mode
 double Omega = 0.5; //primary mode freq
 double y_0 = 1; //shift of primary mode
-const int n_omega = 100; // total num of modes
-const double omega_max = 10;//20;//2.5 for gaussian// 20 for ohmic
+const int n_omega = 200; // total num of modes
+const double omega_max = 15;//20;//2.5 for gaussian// 20 for ohmic
 const double DeltaTau =0.002; //time slice for t' griding
-const double tp_max = 40; //scanning tp option, DeltaTau as step
+const double tp_max = 20; //scanning tp option, DeltaTau as step
 const double Deltatp = 0.2;
 const int bldim = 3;
 const int eldim = 3;
-double beta_list[bldim] = {0.2, 1, 5};//{0.2, 1.0, 5.0};
-double eta_list[eldim] = {0.5, 1, 5};//{0.2, 1.0, 5.0};
+double beta_list[bldim] = {1, 2, 5};//{1};//{1, 2, 5};//{0.2, 1.0, 5.0};
+double eta_list[eldim] = {0.5, 1, 5};//{1};//{0.5, 1, 5};//{0.2, 1.0, 5.0};
 // ************************************
 
 double beta = 0.2;//0.2;//1;//5;
@@ -36,8 +36,8 @@ double tp_fix = 5; //fixed t' for noneq FGR rate k(t',omega_DA) with scan omega_
 const double d_omega = omega_max / n_omega;//0.1;//0.002;for gaussian//0.1; for ohmic
 const double d_omega_eff = omega_max / n_omega; //for effective SD sampling rate
 
-const int LEN = 512;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
-const double DeltaT=0.2;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
+const int LEN = 1024;//512;//1024;
+const double DeltaT=0.1;//0.2; //FFT time sampling interval
 const double T0= -DeltaT*(LEN*0.5);//-DeltaT*LEN/2+DeltaT/2;
 
 const double pi=3.14159265358979324;
@@ -99,7 +99,9 @@ int main (int argc, char *argv[]) {
     double integ_re[n_omega];
     double integ_im[n_omega];
     
-    ofstream outfile;
+    ofstream outfile;// k(t')
+    ofstream outfile1;//P(t) the noneq probability of being on the donor state
+    ofstream outfile2; //keq at omega_DA_fix
     
     double integral_re, integral_im;
     integral_re = integral_im = 0;
@@ -169,6 +171,14 @@ int main (int argc, char *argv[]) {
     int eta_index(0);
                   
     cout << "-------------- NEFGR in Condon case --------------" << endl;
+    
+    ss.str("");
+    idstr = "";
+    ss << "w" << omega_DA_fix ;
+    idstr += ss.str();
+    //keq of QMLSC in Condon case
+    outfile2.open((emptystr + "k_QMLSC_EFGR_" + nameapp + idstr + ".dat").c_str());
+    
     
     //BEGIN loop through thermal conditions
     int case_count(0);
@@ -309,7 +319,6 @@ int main (int argc, char *argv[]) {
     
     //******** END of Normal mode analysis **************
     
-
     //Case [1]: Equilibrium exact QM / LSC in Condon case using discreitzed J(\omega)
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
@@ -340,7 +349,9 @@ int main (int argc, char *argv[]) {
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
-    
+    //output keq at omega_DA_fix
+    i = static_cast<int> (omega_DA_fix/d_omega_DA+0.5);
+    outfile2 << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
 
 
     //Case [2]: Noneq exact QM / LSC in Condon case using discreitzed J(\omega)
@@ -382,8 +393,7 @@ int main (int argc, char *argv[]) {
     */
     
  
-    //option [B]: fix omega_DA, scan tp = 0 - tp_max
-    
+    //option [B]: fix omega_DA, scan tp = 0 - tp_max (main result)
     omega_DA = omega_DA_fix; //fix omega_DA
 
     //ss.clear();
@@ -395,7 +405,7 @@ int main (int argc, char *argv[]) {
     
     outfile.open((emptystr+"QMLSC_NEFGR_"+nameapp+idstr+".dat").c_str());
     
-    ofstream outfile1;//P(t') the noneq probability of being on the donor state
+    
     outfile1.open((emptystr+"QMLSC_P_NEFGR_"+nameapp+idstr+".dat").c_str());
     
 
@@ -590,20 +600,24 @@ int main (int argc, char *argv[]) {
     }
     
     
+    outfile2.close();
+    outfile2.clear();
+    
     
     cout << "--- SUMMARY --- " << endl;
-    
+    /*
     cout << "[1] fix tp, scan omega_DA" << endl;
     cout << "   fix tp = " << tp_fix << endl;
     cout << "   d_omega_DA = " << d_omega_DA << endl;
     cout << "   number of omega_DA = " << nn/2 << endl << endl;
-    
-    cout << "[2] fix omega_DA, scan tp" << endl;
-    cout << "   fix omega_DA = " << omega_DA_fix << endl;
-    cout << "   Delta tp = " << Deltatp << endl;
-    cout << "   number of tp = " << tp_max/Deltatp << endl << endl;
+    */
+    //cout << "[2] fix omega_DA, scan tp" << endl;
+    cout << "fix omega_DA = " << omega_DA_fix << endl;
+    cout << "Delta tp = " << Deltatp << endl;
+    cout << "number of tp = " << tp_max/Deltatp << endl << endl;
     
     cout << "normal modes n_omega = " << n_omega << endl;
+    cout << "omega_max = " << omega_max << endl;
     cout << "initial shift s = " << s << endl;
     cout << "---------- END of all NEFGR in Condon case ----------" << endl;
     return 0;
