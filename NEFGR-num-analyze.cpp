@@ -16,14 +16,16 @@ using namespace std;
 
 //*********** change parameter *********
 string filename = "num_LSC_NEFGR_C_";
-const int NFILE = 50;
-const int MINFILE = 1;
-const int MCN = 20000;//50000; //Monte Carlo sample rate
-const double beta = 1; //3;
-const double eta = 1;  //3;
-double omega_DA_fix = 3; //fixed omega_DA, with scan tp
+const int NFILE = 100;
+int MINFILE = 1;
+const int MCN = 10000;//50000; //Monte Carlo sample rate
+double omega_DA_fix = 0; //fixed omega_DA, with scan tp
 double s = 1;    //Noneq. initial shift of parimary mode
+const double beta = 5; //3;
+const double eta = 0.5;  //3;
 double Omega = 0.5;
+const int N_BUNCH = 10; //number of bunches for block analysis. (default= 1)
+const int BUNCH_FILE = 10;//in each block, # of files. (default = NFILE)
 //*********** **************** *********
 
 //double tp_fix = 5; //fixed t' for noneq FGR rate k(t',omega_DA) with scan omega_DA
@@ -49,11 +51,9 @@ int main (int argc, char *argv[]) {
     string idstr("");
     string nameapp("");
     string fnum("");
+    string bunchstr("");
 
-    ofstream outfile; //output to file
-    ofstream outfile1; //output to file
-    ifstream infile;  //input from file
-                  
+
     cout << "--------- BEGIN. NEFGR-num-analyze --------" << endl;
 
     ss.str("");
@@ -67,6 +67,7 @@ int main (int argc, char *argv[]) {
     fnum = ss.str();
     
     int i, j;
+    int bunch_index;
     int tp_index_max = static_cast<int> (tp_max / Deltatp);
     int tp_index;
     int M; //time slice for tau = 0 --> tp
@@ -91,72 +92,182 @@ int main (int argc, char *argv[]) {
             C_im_accum[tp_index][m] = 0; //initialize C_im_accum[][]
         }
     }
+    
+    double *ktp = new double [tp_index_max]; //transfer rate for BUNCH AVG
+    double *ktp_accum = new double [tp_index_max]; //transfer rate accum for AVG
+    double *ktp_sq_accum = new double [tp_index_max]; //transfer rate square accum
+    for (i=0; i< tp_index_max; i++) {
+        ktp_accum[i] = 0;
+        ktp_sq_accum[i]=0;
+    }
+    double *pt = new double [tp_index_max]; // donor state population AVG
+    double temp_re;
+    double temp_im;
 
-    //import data from files
-    for (j = 0; j < NFILE; j++) {
-        ss.str("");
-        ss << j + MINFILE;
-        idstr = ss.str();
+    
+    ifstream infile;  //input from file
+    ofstream outfile; //output to file  bunch k(tp)
+    ofstream outfile1; //output to file  total P(t)
+    ofstream outfile2; //output to file  total k(tp)
+    ofstream outfile3; //output to file  total k(tp) error
+    
+    outfile1.open((emptystr+"num_LSC_NEFGR_P_"+nameapp+"AVG"+fnum+".dat").c_str());
+    outfile2.open((emptystr+"num_LSC_NEFGR_k_"+nameapp+"AVG"+fnum+".dat").c_str());
+    outfile3.open((emptystr+"num_LSC_NEFGR_k_"+nameapp+"ERR"+fnum+".dat").c_str());
+    
+    
+    //BEGIN averaging and error analysis bunch by bunch
+    for (bunch_index = 1; bunch_index <= N_BUNCH; bunch_index++)  {
         
-        infile.open((filename+nameapp+idstr+".dat").c_str());
-        if (!infile.is_open()) cout << "Error: cannot open data file # " << j << endl;
-
+        //initialize for accum arrays
         for (tp_index = 0; tp_index < tp_index_max; tp_index++) {
             tp = tp_index * Deltatp;
             M = static_cast<int> (tp/DeltaTau);
             for (m = 0; m < M; m++) {
-                infile >> C_re[tp_index][m];
-                infile >> C_im[tp_index][m];
-                C_re_accum[tp_index][m] += C_re[tp_index][m] / NFILE;
-                C_im_accum[tp_index][m] += C_im[tp_index][m] / NFILE;
+                C_re_accum[tp_index][m] = 0; //initialize C_re_accum[][]
+                C_im_accum[tp_index][m] = 0; //initialize C_im_accum[][]
             }
         }
-        infile.close();
-        infile.clear();
-    }
+        
+        //import data from files (BUNCH_FILE)
+        for (j = 0; j < BUNCH_FILE; j++) {
+            ss.str("");
+            ss << bunch_index * BUNCH_FILE + MINFILE + j;
+            idstr = ss.str();
+            
+            infile.open((filename+nameapp+idstr+".dat").c_str());
+            if (!infile.is_open()) cout << "Error: cannot open data file # " << j << endl;
 
-    
-    //calculate transfer rate from C(tp, tau) data
-    outfile1.open((emptystr+"num_LSC_NEFGR_P_"+nameapp+"AVG"+fnum+".dat").c_str());
-    outfile.open((emptystr+"num_LSC_NEFGR_k_"+nameapp+"AVG"+fnum+".dat").c_str());
-    
-    double *ktp = new double [tp_index_max]; //transfer rate
-    double *pt = new double [tp_index_max]; // donor state population
-    double temp_re;
-    double temp_im;
+            for (tp_index = 0; tp_index < tp_index_max; tp_index++) {
+                tp = tp_index * Deltatp;
+                M = static_cast<int> (tp/DeltaTau);
+                for (m = 0; m < M; m++) {
+                    infile >> C_re[tp_index][m];
+                    infile >> C_im[tp_index][m];
+                    C_re_accum[tp_index][m] += C_re[tp_index][m] / BUNCH_FILE;
+                    C_im_accum[tp_index][m] += C_im[tp_index][m] / BUNCH_FILE;
+                }
+            }
+            infile.close();
+            infile.clear();
+        }
+        
+        //calculate transfer rate k(tp) from C(tp, tau) data (bunch averaging)
+        ss.str("");
+        ss << bunch_index;
+        bunchstr = ss.str();
+        outfile.open((emptystr+"num_LSC_NEFGR_k_"+nameapp+"BUNCH"+bunchstr+".dat").c_str());
+        for (tp_index = 0; tp_index < tp_index_max; tp_index++) {
+            tp = tp_index * Deltatp;
+            M = static_cast<int> (tp/DeltaTau);
+            ktp[tp_index] = 0;
+            //temp_re = temp_im = 0;
+            
+            for (m = 0; m < M; m++) {
+                tau = m * DeltaTau;
+                temp_re = C_re_accum[tp_index][m];
+                temp_im = C_im_accum[tp_index][m];
+                ktp[tp_index] += temp_re * cos(omega_DA_fix*tau) - temp_im * sin(omega_DA_fix*tau);
+            }
+            ktp[tp_index] *= DeltaTau * 2.0 * DAcoupling*DAcoupling;
+            outfile << ktp[tp_index] << endl;
+            //accumulate for total average and error
+            ktp_accum[tp_index] += ktp[tp_index];
+            ktp_sq_accum[tp_index] += ktp[tp_index] * ktp[tp_index];
+            //population += ktp[tp_index] * Deltatp; // population of donor state
+            //outfile1 << exp(-1.0 * population) << endl; //P(t) = exp(- int_0^t dt' k(t'))
+        }
+        outfile.close();
+        outfile.clear();
+        
+    }
     double population(0); //population of Donor state
-    
+    double error;
+    //total averaging and output
     for (tp_index = 0; tp_index < tp_index_max; tp_index++) {
         tp = tp_index * Deltatp;
-        M = static_cast<int> (tp/DeltaTau);
-        ktp[tp_index] = 0;
-        //temp_re = temp_im = 0;
         
-        for (m = 0; m < M; m++) {
-            tau = m * DeltaTau;
-            temp_re = C_re_accum[tp_index][m];
-            temp_im = C_im_accum[tp_index][m];
-            ktp[tp_index] += temp_re * cos(omega_DA_fix*tau) - temp_im * sin(omega_DA_fix*tau);
-        }
-        ktp[tp_index] *= DeltaTau * 2.0 * DAcoupling*DAcoupling;
-        outfile << ktp[tp_index] << endl;
-        population += ktp[tp_index] * Deltatp; // population of donor state
-        //outfile1 << 1 - population << endl; //P(t) = 1 - int_0^t dt' k(t')
+        ktp_accum[tp_index] /= N_BUNCH;
+        ktp_sq_accum[tp_index] /= N_BUNCH;
+        
+        population += ktp_accum[tp_index] * Deltatp; // population of donor state
         outfile1 << exp(-1.0 * population) << endl; //P(t) = exp(- int_0^t dt' k(t'))
-    }
+        
+        outfile2 << ktp_accum[tp_index] << endl;//total avg k(tp)
+        
+        error = (ktp_sq_accum[tp_index] - ktp_accum[tp_index] * ktp_accum[tp_index]) / sqrt(N_BUNCH);
+        
+        outfile3 << error << endl; //error bar of k(tp)
 
-    outfile.close();
-    outfile.clear();
-    outfile1.close();
-    outfile1.clear();
+    }
     
+    
+    /*
+     //import data from files
+     for (j = 0; j < NFILE; j++) {
+     ss.str("");
+     ss << j + MINFILE;
+     idstr = ss.str();
+     
+     infile.open((filename+nameapp+idstr+".dat").c_str());
+     if (!infile.is_open()) cout << "Error: cannot open data file # " << j << endl;
+     
+     for (tp_index = 0; tp_index < tp_index_max; tp_index++) {
+     tp = tp_index * Deltatp;
+     M = static_cast<int> (tp/DeltaTau);
+     for (m = 0; m < M; m++) {
+     infile >> C_re[tp_index][m];
+     infile >> C_im[tp_index][m];
+     C_re_accum[tp_index][m] += C_re[tp_index][m] / NFILE;
+     C_im_accum[tp_index][m] += C_im[tp_index][m] / NFILE;
+     }
+     }
+     infile.close();
+     infile.clear();
+     }
+     
+     
+     //calculate transfer rate from C(tp, tau) data
+     outfile1.open((emptystr+"num_LSC_NEFGR_P_"+nameapp+"AVG"+fnum+".dat").c_str());
+     outfile.open((emptystr+"num_LSC_NEFGR_k_"+nameapp+"AVG"+fnum+".dat").c_str());
+     
+     double *ktp = new double [tp_index_max]; //transfer rate
+     double *pt = new double [tp_index_max]; // donor state population
+     double temp_re;
+     double temp_im;
+     double population(0); //population of Donor state
+     
+     for (tp_index = 0; tp_index < tp_index_max; tp_index++) {
+     tp = tp_index * Deltatp;
+     M = static_cast<int> (tp/DeltaTau);
+     ktp[tp_index] = 0;
+     //temp_re = temp_im = 0;
+     
+     for (m = 0; m < M; m++) {
+     tau = m * DeltaTau;
+     temp_re = C_re_accum[tp_index][m];
+     temp_im = C_im_accum[tp_index][m];
+     ktp[tp_index] += temp_re * cos(omega_DA_fix*tau) - temp_im * sin(omega_DA_fix*tau);
+     }
+     ktp[tp_index] *= DeltaTau * 2.0 * DAcoupling*DAcoupling;
+     outfile << ktp[tp_index] << endl;
+     population += ktp[tp_index] * Deltatp; // population of donor state
+     //outfile1 << 1 - population << endl; //P(t) = 1 - int_0^t dt' k(t')
+     outfile1 << exp(-1.0 * population) << endl; //P(t) = exp(- int_0^t dt' k(t'))
+     }
+     
+     outfile.close();
+     outfile.clear();
+     outfile1.close();
+     outfile1.clear();
+     */
     
     cout << "   Parameters: " << endl;
     cout << "       beta = " << beta << endl;
     cout << "        eta = " << eta << endl;
     cout << "       fix omega_DA = " << omega_DA_fix << endl;
     cout << "       initial shift s = " << s << endl;
-  
+    cout << "   N_BUNCH = " << N_BUNCH << endl;
     cout << "   Averaged " << NFILE << " files." << endl;
     cout << "--------- DONE. NEFGR-num-analyze --------" << endl;
     return 0;

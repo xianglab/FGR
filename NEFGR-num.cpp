@@ -15,12 +15,12 @@
 using namespace std;
 
 //*********** change parameter *********
-const double beta = 1; //3;
-const double eta = 1;  //3;
-double omega_DA_fix = 3; //fixed omega_DA, with scan tp
+const double beta = 5; //3;
+const double eta = 0.5;  //3;
+double omega_DA_fix = 0; //fixed omega_DA, with scan tp
 double s = 1;    //Noneq. initial shift of parimary mode
 double Omega = 0.5; //primary mode freq
-const int MCN = 20000;//50000; //Monte Carlo sample rate
+const int MCN = 10000;//50000; //Monte Carlo sample rate
 //*********** **************** *********
 
 //double tp_fix = 5; //fixed t' for noneq FGR rate k(t',omega_DA) with scan omega_DA
@@ -30,11 +30,11 @@ const double tp_max = 20; //scanning tp option, DeltaTau as step
 const double Deltatp = 0.2; //time step for tp (0 ~ tp_max)
 const double DeltaTau =0.002; //time slice for t' griding
 
-const int n_omega = 100;
+const int n_omega = 200;
 const int N = n_omega; //system degrees of freedom
-const double d_omega = 0.1;//0.1;//0.002 for gaussian//0.1; for ohmic
-//const double omega_max = 1;//20;//2.5 for gaussian// 20 for ohmic
-const double d_omega_eff = 0.1; //for effective SD sampling rate
+const double omega_max = 15;//20;//2.5 for gaussian// 20 for ohmic
+const double d_omega = omega_max / n_omega; //0.1;
+const double d_omega_eff = d_omega;//0.1;
 
 const int LEN = 512;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
 const double DeltaT=0.2;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
