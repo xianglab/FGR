@@ -14,18 +14,18 @@
 using namespace std;
 
 // *********** change parameters *********
-double Omega = 0.5; //primary mode freq
+double Omega = 2; //primary mode freq
 double y_0 = 1.0; //shift of primary mode
-const int bldim = 3;
-const int eldim = 3;
-double beta_list[bldim] = {1.0, 2.0, 5.0};  //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
-double eta_list[eldim] = {0.5, 1.0, 5.0}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
-const int n_omega = 200;
+const int bldim = 1;//3;
+const int eldim = 1;// 3;
+double beta_list[bldim] = {1}; //{1.0, 2.0, 5.0};  //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
+double eta_list[eldim] = {1}; //{0.5, 1.0, 5.0}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
+const int n_omega = 1000;
 const double omega_max = 15;
 const double d_omega = omega_max / n_omega;
 const double omega_bath_start = d_omega;//don't change it unless change all bath freq.
 const int LEN = 1024; //512;//number of t choices or 1024 with DeltaT=0.3
-const double DeltaT = 0.1;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
+const double DeltaT = 0.05;//0.2;//0.3; //FFT time sampling interval
 // *********** **************** *********
 
 double beta = 1;//0.2;//1;//5;
@@ -180,6 +180,7 @@ int main (int argc, char *argv[]) {
             eta = eta_list[eta_index];
             ss.str("");
             nameapp = "";
+            ss << "Omega" << Omega<< "_";
             ss << "b" << beta;
             ss << "e" << eta;
             nameapp = ss.str();

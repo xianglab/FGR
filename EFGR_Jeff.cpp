@@ -15,16 +15,16 @@
 using namespace std;
 
 // *********** change parameters *********
-const int bldim = 3;
-const int eldim = 3;
-double beta_list[bldim] = {0.2, 1.0, 5.0};  //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
-double eta_list[eldim] = {0.5, 1.0, 5.0}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
-double Omega = 0.2;//0.5; //primary mode freq 0.2, 0.5, 1
+const int bldim = 1;//3;
+const int eldim = 1;// 3;
+double beta_list[bldim] = {1};// {0.2, 1.0, 5.0};  //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
+double eta_list[eldim] = {1}; //{0.5, 1.0, 5.0}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
+double Omega = 2;//0.5; //primary mode freq 0.2, 0.5, 1, 2
 double y_0 = 1;//10;//sqrt(10.0);//1.0; //shift of primary mode
 const double omega_max = 15;//40;//20;//15 or 20 for Jeff
 const int n_omega = 10000;//25000;//10000;
 const int LEN = 1024;//1024;//512; //number of t choices
-const double DeltaT = 0.2;//0.3;//0.2; //FFT time sampling interval
+const double DeltaT = 0.05;//0.2; //FFT time sampling interval
 // *********** **************** *********
 
 
@@ -144,6 +144,7 @@ int main (int argc, char *argv[]) {
         eta = eta_list[eta_index];
         ss.str("");
         nameapp = "";
+        ss << "Omega"<< Omega << "_";
         ss << "b" << beta;
         ss << "e" << eta;
         nameapp = ss.str();
@@ -188,8 +189,8 @@ int main (int argc, char *argv[]) {
     //=============case: [1] Eq FGR using continuous SD J_eff(\omega)=============
     
     //[a] Exact or LSC approximation using Jeff
-    //outfile1.open("Integral_Jeff.dat");
-    outfile1.open((emptystr + "QMLSC_EFGR_Jeff_tre_" + nameapp + ".dat").c_str());
+    outfile1.open((emptystr + "EFGR_Integral_Jeff_" + nameapp + ".dat").c_str());
+    //outfile1.open((emptystr + "QMLSC_EFGR_Jeff_tre_" + nameapp + ".dat").c_str());
     
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
@@ -208,12 +209,12 @@ int main (int argc, char *argv[]) {
         //integral_re = Integrate(integ_re, n_omega, d_omega_eff);
         //integral_im = Integrate(integ_im, n_omega, d_omega_eff);
         
-        //outfile1 << integral_re << "\t" << integral_im << endl;
+        outfile1 << integral_re << "\t" << integral_im << endl;
         
         corr1[i] = exp(-1 * integral_re) * cos(integral_im);
         corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
         
-        outfile1 << corr1[i] << endl;
+        //outfile1 << corr1[i] << endl;
     }
     
     tau_c = 0.5 * Integrate(corr1, nn, DeltaT) / corr1[shift_index];
@@ -233,9 +234,9 @@ int main (int argc, char *argv[]) {
     outfile1.close();
     outfile1.clear();
     
-    /*
+    
     //[a'] Exact or LSC approximation using Jeff2
-    outfile1.open("Integral_Jeff2.dat");
+    outfile1.open((emptystr + "EFGR_Integral_Jeff2_" + nameapp + ".dat").c_str());
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
@@ -266,13 +267,13 @@ int main (int argc, char *argv[]) {
         corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
     }
     
-    outfile.open("Exact_EFGR_Jeff2.dat");
+    outfile.open((emptystr + "QMLSC_EFGR_Jeff2_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
     outfile.close();
     outfile.clear();
     outfile1.close();
     outfile1.clear();
-    */
+    
     
     //[b] inh approximation
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
@@ -627,7 +628,9 @@ int main (int argc, char *argv[]) {
     outfile.clear();
     outfile1.close();
     outfile1.clear();
+     */
 
+     
     //-------------- Summary ----------------
     
     cout << "-----THERMAL CONDITION------- " << endl;
@@ -639,7 +642,7 @@ int main (int argc, char *argv[]) {
     cout << "eta  = " << eta << endl;
     //cout << "initial shift s = " << s << endl;
     cout << "--------- END of EFGR in Condon case --------" << endl;
-    */
+    
     
     
     return 0;

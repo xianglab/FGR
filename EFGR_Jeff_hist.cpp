@@ -28,7 +28,7 @@ const double omega_c = 1; //cutoff freq for ohmic
 const int MAXBIN = 200;
 
 const int LEN = 1024;//512; //number of t choices
-const double DeltaT = 0.3;//0.2; //FFT time sampling interval
+const double DeltaT = 0.2;//0.2; //FFT time sampling interval
 const double T0= -DeltaT*(LEN*0.5);
 const double hbar = 1;
 const double pi=3.14159265358979324;
@@ -66,6 +66,7 @@ int main (int argc, char *argv[]) {
     stringstream ss;
     string emptystr("");
     string filename("");
+    string nameapp("");
     string idstr("");
     
     
@@ -95,8 +96,8 @@ int main (int argc, char *argv[]) {
     double integral_re, integral_im;
     integral_re = integral_im = 0;
     
-    double SD[n_omega];
     double J_eff[n_omega];
+    double J_eff2[n_omega];
     
     int M; //time slice for tau = 0 --> tp
     int m; //index of tau
@@ -121,22 +122,32 @@ int main (int argc, char *argv[]) {
     
     cout << "--------- BEGIN of EFGR in Condon case --------" << endl;
     
+    ss.str("");
+    nameapp = "";
+    ss << "Omega"<< Omega << "_";
+    ss << "b" << beta;
+    ss << "e" << eta;
+    nameapp = ss.str();
+    
     //setting up spectral density
     for (w = 1; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff(w*d_omega_eff, eta);
-    //for (w = 0; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff((w+1)*d_omega_eff, eta);
     
-    outfile1.open("J_eff(omega).dat");
+    
+    outfile1.open((emptystr + "J_eff(omega)_" + nameapp + ".dat").c_str());
     for (w = 1; w< n_omega; w++) outfile1 << J_eff[w] << endl;
     outfile1.close();
     outfile1.clear();
+    cout << "[1] Area of Jeff(omega) = " << Integrate_from(J_eff, 1, n_omega, d_omega_eff) << endl;
     
-    outfile1.open("J_eff2(omega).dat");
+    outfile1.open((emptystr + "J_eff2(omega)_" + nameapp + ".dat").c_str());
     for (w = 1; w< n_omega; w++) {
-        if ( w*d_omega < Omega && (w+1)*d_omega > Omega) outfile1 << J_omega_ohmic(w*d_omega, eta) + 10 << endl;
-        else outfile1 << J_omega_ohmic(w*d_omega, eta) << endl;
+        if ( w*d_omega < Omega && (w+1)*d_omega > Omega) J_eff2[w] = J_omega_ohmic(w*d_omega, eta) + pi * 0.5 * pow(Omega , 3) * y_0 * y_0 / d_omega;
+        else J_eff2[w] = J_omega_ohmic(w * d_omega, eta);
     }
+    for (w = 1; w< n_omega; w++) outfile1 << J_eff[w] << endl;
     outfile1.close();
     outfile1.clear();
+    cout << "[2] Area of Jeff2(omega) = " << Integrate_from(J_eff2, 1, n_omega, d_omega) << endl;
     
     Er_eff_RRww = 0;
     Er_eff_Jw = 0;
@@ -156,7 +167,7 @@ int main (int argc, char *argv[]) {
     //cout << "Er_eff = " << Er_eff << endl;
     
     cout << "Er_eff_Jw   = " << Er_eff_Jw << endl;
-    cout << "Er_eff_RRww = " << Er_eff_RRww << endl;
+    //cout << "Er_eff_RRww = " << Er_eff_RRww << endl;
     //outfile << Er_eff_Jw  << endl;
     
     Er_eff = Er_eff_Jw;
@@ -164,7 +175,7 @@ int main (int argc, char *argv[]) {
     cout << "a_parameter_eff = " << a_parameter_eff << endl;
 
     
-    /*
+    
     //=============case: [1] Eq FGR using continuous SD J_eff(\omega)=============
     
     //[a] Exact or LSC approximation
@@ -202,7 +213,7 @@ int main (int argc, char *argv[]) {
     outfile.clear();
     
     
-    
+    /*
     //[b] inh approximation
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
@@ -545,10 +556,14 @@ int main (int argc, char *argv[]) {
     
     for (bin = 0; bin < MAXBIN; bin++) influence[bin] *= sum_J / (dr * sum_influence);
     
-    outfile.open("J_nm_hist.dat");
+    outfile.open((emptystr + "J_nm_hist_" + nameapp + ".dat").c_str());
     for (bin = 0; bin < MAXBIN; bin++) outfile << influence[bin] << endl;
     outfile.close();
     outfile.clear();
+    
+    cout << "-------- Normal mode analysis ------- " << endl;
+    
+    cout << "[3] Area of J_nm histogram = " << sum_J << endl;
     
     cout << " # of bins: MAXBIN = " << MAXBIN << endl;
     
@@ -573,7 +588,7 @@ int main (int argc, char *argv[]) {
     outfile1.clear();
     
     
-    /*
+    
     //===========case: [2] Eq FGR using discreitzed SD J_o(\omega) exact ===========
     for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
     for (i = 0; i < LEN; i++) {
@@ -605,7 +620,7 @@ int main (int argc, char *argv[]) {
     outfile.close();
     outfile.clear();
     
-    */
+    
     
     
     //-------------- Summary ----------------
