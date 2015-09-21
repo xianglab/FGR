@@ -17,7 +17,7 @@ using namespace std;
 double beta = 1.0;//0.1, 0.5;//1;//5;
 double eta = 1.0; //0.5;//1;//5;
 const double DAcoupling = 0.1;
-double Omega = 2; //primary mode freq
+double Omega = 0.2; //primary mode freq
 double y_0 = 1.0; //shift of primary mode
 
 const double omega_max = 15;//20;//15 or 20 for Jeff
@@ -144,7 +144,7 @@ int main (int argc, char *argv[]) {
         if ( w*d_omega < Omega && (w+1)*d_omega > Omega) J_eff2[w] = J_omega_ohmic(w*d_omega, eta) + pi * 0.5 * pow(Omega , 3) * y_0 * y_0 / d_omega;
         else J_eff2[w] = J_omega_ohmic(w * d_omega, eta);
     }
-    for (w = 1; w< n_omega; w++) outfile1 << J_eff[w] << endl;
+    for (w = 1; w< n_omega; w++) outfile1 << J_eff2[w] << endl;
     outfile1.close();
     outfile1.clear();
     cout << "[2] Area of Jeff2(omega) = " << Integrate_from(J_eff2, 1, n_omega, d_omega) << endl;
