@@ -117,7 +117,7 @@ int main (int argc, char *argv[]) {
     
     
     //BEGIN averaging and error analysis bunch by bunch
-    for (bunch_index = 1; bunch_index <= N_BUNCH; bunch_index++)  {
+    for (bunch_index = 0; bunch_index < N_BUNCH; bunch_index++)  {
         
         //initialize for accum arrays
         for (tp_index = 0; tp_index < tp_index_max; tp_index++) {
