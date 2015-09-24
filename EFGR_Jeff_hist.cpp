@@ -17,7 +17,7 @@ using namespace std;
 double beta = 1.0;//0.1, 0.5;//1;//5;
 double eta = 1.0; //0.5;//1;//5;
 const double DAcoupling = 0.1;
-double Omega = 0.2; //primary mode freq
+double Omega = 0.5; //primary mode freq
 double y_0 = 1.0; //shift of primary mode
 
 const double omega_max = 15;//20;//15 or 20 for Jeff

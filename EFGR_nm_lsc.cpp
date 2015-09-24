@@ -16,16 +16,16 @@ using namespace std;
 // *********** change parameters *********
 double Omega = 2; //primary mode freq
 double y_0 = 1.0; //shift of primary mode
-const int bldim = 1;//3;
-const int eldim = 1;// 3;
-double beta_list[bldim] = {1}; //{1.0, 2.0, 5.0};  //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
-double eta_list[eldim] = {1}; //{0.5, 1.0, 5.0}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
+const int bldim = 3;//1;//3;
+const int eldim = 3;//1;// 3;
+double beta_list[bldim] = {0.2, 1.0, 5.0};//{1}; //{1.0, 2.0, 5.0};  //{0.1, 1, 10}; //{0.2, 1.0, 5.0};
+double eta_list[eldim] = {0.5, 1.0, 5.0};//{1}; //{0.5, 1.0, 5.0}; //{0.1, 1, 10}; //{0.5, 1.0, 5.0};
 const int n_omega = 1000;
 const double omega_max = 15;
 const double d_omega = omega_max / n_omega;
 const double omega_bath_start = d_omega;//don't change it unless change all bath freq.
 const int LEN = 1024; //512;//number of t choices or 1024 with DeltaT=0.3
-const double DeltaT = 0.05;//0.2;//0.3; //FFT time sampling interval
+const double DeltaT = 0.05;//0.2; //FFT time sampling interval
 // *********** **************** *********
 
 double beta = 1;//0.2;//1;//5;
@@ -105,6 +105,7 @@ int main (int argc, char *argv[]) {
     
     ofstream outfile;
     ofstream outfile1;
+    ofstream outfile2;
     
     double integral_re, integral_im;
     integral_re = integral_im = 0;
@@ -259,7 +260,8 @@ int main (int argc, char *argv[]) {
     
     
     //Case [1]: Equilibrium exact QM / LSC in Condon case using discreitzed J(\omega)
-     outfile1.open((emptystr + "QMLSC_EFGR_nm_tre_" + nameapp + ".dat").c_str());
+     outfile1.open((emptystr + "EFGR_integral_nm_" + nameapp + ".dat").c_str());
+     outfile2.open((emptystr + "QMLSC_EFGR_nm_C(t)_" + nameapp + ".dat").c_str());
      for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
      for (i = 0; i < LEN; i++) {
          t = T0 + DeltaT * i;
@@ -275,7 +277,8 @@ int main (int argc, char *argv[]) {
          corr1[i] = exp(-1 * integral_re) * cos(integral_im);
          corr2[i] = -1 * exp(-1 * integral_re) * sin(integral_im);
          
-         outfile1 << corr1[i] << endl;
+         outfile1 << integral_re << "\t" << integral_im << endl;
+         outfile2 << corr1[i] << "\t" << corr2[i] << endl;
      }
   
      FFT(-1, mm, corr1, corr2);//notice its inverse FT
@@ -291,7 +294,8 @@ int main (int argc, char *argv[]) {
      outfile.clear();
     outfile1.close();
     outfile1.clear();
-
+    outfile2.close();
+    outfile2.clear();
     
     case_count++;
 
