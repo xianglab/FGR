@@ -748,30 +748,14 @@ void Linear_NE_exact(double omega, double tp, double tau,  double shift, double 
 void Linear_NE_LSC(double omega, double tp, double tau,  double shift, double req, double &re, double &im) {
     double Coth = 1.0 / tanh(beta*hbar*omega*0.5);
     re = shift*shift*cos(omega*tp)*cos(omega*tp-omega*tau) + Coth * hbar/omega*0.5*cos(omega*tau) - req*req* 0.5 * Coth * Coth * pow(sin(0.5*omega*tau),2) * (cos(4*omega*tp - 2*omega*tau) + cos(omega*tau)) ;
-    im = - 0.25*req*shift * Coth * ( (1-2*cos(omega*tau))*sin(omega*tp) + sin(omega*tp-2*omega*tau) - 4* cos(3*omega*tp - 1.5*omega*tau)*sin(0.5*omega*tau) );
-    //re = shift*shift*cos(omega*tp)*cos(omega*tp-omega*tau) + Coth *( hbar/omega*0.5*cos(omega*tau) - req*req*0.5 * Coth * pow(sin(0.5*omega*tau),2) * (cos(4*omega*tp-2*omega*tau)+cos(omega*tau)) );
-    //im = - Coth * 0.5*req*shift*sin(0.5*omega*tau) * ( cos(omega*tp-1.5*omega*tau)+ 2*cos(3*omega*tp-1.5*omega*tau) + cos(omega*tp+0.5*omega*tau) );
+    im =  0.25*req*shift * Coth * ( (1-2*cos(omega*tau))*sin(omega*tp) + sin(omega*tp-2*omega*tau) - 4* cos(3*omega*tp - 1.5*omega*tau)*sin(0.5*omega*tau) );
     return;
 }
 
 
 void Linear_NE_CAV(double omega, double tp, double tau,  double shift, double req, double &re, double &im) {
-    double cc, ss, dss, dcc;
-    cc = cos(omega*tp) * cos(omega*tp-omega*tau);
-    ss = sin(omega*tp) * sin(omega*tp-omega*tau);
-    dcc = cos(omega*tp) - cos(omega*tp-omega*tau);
-    dss = sin(omega*tp) - sin(omega*tp-omega*tau);
-    re = shift*shift * cc + 2*req*req / pow(beta*hbar*omega, 2) * sin(omega*tp-0.5*omega*tau) * sin(omega*tp-0.5*omega*tau) * dss * dss + ss/(beta*beta*omega*omega)* (beta - req*req/hbar/hbar*dcc*dcc) + cc/(beta*beta*omega*omega)* (beta - req*req/hbar/hbar*dss*dss);
-    im = 2*req*shift /(beta*hbar*omega)* dss * cos(0.5*omega*tau) * cos(0.5*omega*tau);
-    /*
-    double tre, tim, coef, last_term;
-    tre = beta * omega * shift;
-    tim = req /hbar * ( sin(omega*tp-omega*tau) - sin(omega*tp) );
-    coef = 2 * req * pow(sin(omega*tp-0.5*omega*tau),2) / (beta*beta*hbar*hbar*omega*omega) * ( sin(omega*tp) - sin(omega*tp-omega*tau) );
-    last_term = sin(omega*tp)*sin(omega*tp-omega*tau)/ (beta*beta*omega*omega) * (beta - req*req/hbar/hbar * pow(cos(omega*tp)-cos(omega*tp-omega*tau),2) );
-    re = cos(omega*tp)*cos(omega*tp-omega*tau) / (beta*beta*omega*omega) * (beta + tre*tre - tim*tim) + coef * req * ( sin(omega*tp) - sin(omega*tp-omega*tau) ) + last_term;
-    im = cos(omega*tp)*cos(omega*tp-omega*tau) / (beta*beta*omega*omega) * (2*tre*tim) + coef * beta*hbar*omega*shift;
-     */
+    re = shift*shift*cos(omega*tp)*cos(omega*tp-omega*tau) + 1.0/(beta*omega*omega) * cos(omega*tau) - req*req* 0.5 / pow(beta*hbar*omega*0.5,2) * pow(sin(0.5*omega*tau),2) * (cos(4*omega*tp - 2*omega*tau) + cos(omega*tau)) ;
+    im =  0.5*req*shift / (beta*hbar*omega) * ( (1-2*cos(omega*tau))*sin(omega*tp) + sin(omega*tp-2*omega*tau) - 4* cos(3*omega*tp - 1.5*omega*tau)*sin(0.5*omega*tau) );
     return;
 }
 
