@@ -1,7 +1,7 @@
 /* This code calculates Fermi Golden Rule rate with linear coupling (non-Condon)
     using multiple harmonic oscillator model, under different approximation levels
     (c) Xiang Sun 2015
- 
+    EFGRL.cpp calculates exact normal modes, as well as
     EFGRL.cpp uses the J_eff omega=(w+1)*d_omega_eff instead of w*d_omega_eff (as in EFGRL2.cpp)
  */
 
@@ -13,10 +13,26 @@
 #include <cmath>
 using namespace std;
 
-const int bldim = 3;
+
+//For normal cases
+const int bldim = 4;
 const int eldim = 3;
-double beta_list[bldim] = {0.2, 1.0, 5.0}; //{10};//{0.1, 1.0, 10.0};  //{0.2, 1.0, 5.0};
-double eta_list[eldim] = {0.5, 1.0, 5.0}; //{0.1, 1.0, 10.0};  //{0.5, 1.0, 5.0};
+double beta_list[bldim] = {0.2, 1.0, 2.0, 5.0};//{10};  //{0.1, 1.0, 10.0};  //{0.2, 1.0, 5.0};
+double eta_list[eldim] = {0.5, 1.0, 5.0}; //{0.1}; //{0.1, 1.0, 10.0};  //{0.5, 1.0, 5.0};
+const int LEN = 1024; //512; //number of t choices 512 for normal case, 1024 for quantum b10e0.1
+const double DeltaT = 0.2;//0.2 (LEN=512) or 0.3 (LEN=2014) for ohmic //FFT time step
+const int n_omega = 500; //normal cases 200, 500 for b10e0.1
+
+/*
+//For quantum limit case
+const int bldim = 1;
+const int eldim = 1;
+double beta_list[bldim] = {5}; //{10};
+double eta_list[eldim] = {0.5}; //{0.1};
+const int LEN = 1024; //512; //number of t choices 512 for normal case, 1024 for quantum b10e0.1
+const double DeltaT = 0.3;//0.2 (LEN=512) or 0.3 (LEN=1024) for ohmic //FFT time step
+const int n_omega = 1000; //normal cases 200, 500 for b10e0.1
+*/
 
 double beta = 1;//0.2;//1;//5;
 double eta = 1; //0.2;//1;//5;
@@ -24,13 +40,10 @@ double Omega = 0.5; //primary mode freq
 double y_0 = 1; //shift of primary mode
 const double DAcoupling = 0.1;
 
-const int n_omega = 200; //normal cases 200, 500 for b10e0.1
-const double omega_max = 10;//15 or 20 for ohmic
+const double omega_max = 15;//10, 15 or 20 for ohmic
 const double d_omega = omega_max / n_omega;// ~ 0.1 for ohmic
 const double d_omega_eff = omega_max / n_omega; //for effective SD sampling rate
 
-const int LEN = 512; //512; //number of t choices 512 for normal case, 1024 for quantum b10e0.1
-const double DeltaT = 0.2;//0.2 (LEN=512) or 0.3 (LEN=2014) for ohmic //FFT time step
 const double T0 = -DeltaT*LEN/2;
 const double pi = 3.14159265358979;
 const double RT_2PI= sqrt(2*pi);
@@ -693,8 +706,8 @@ void Integrand_LSC(double omega, double t, double &re, double &im) {
 void Linear_LSC(double omega, double t, double req, double &re, double &im) {
     double Coth = 1.0/tanh(beta*hbar*omega*0.5);
     re = 0.5*hbar/omega* Coth *cos(omega*t) - 0.25*req*req* sin(omega*t)*sin(omega*t)*Coth*Coth;
-    im = 0;
-    //im = -0.5*hbar/omega*sin(omega*t) + 0.25*req*req*Coth*(1-cos(omega*t))*sin(omega*t);
+    im = -0.5*hbar/omega*sin(omega*t) + 0.25*req*req*Coth*(1-cos(omega*t))*sin(omega*t);
+    //im = 0;
     return;
 }
 
