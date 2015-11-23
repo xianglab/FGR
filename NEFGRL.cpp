@@ -13,11 +13,11 @@
 #include <cmath>
 using namespace std;
 
-const int bldim = 3;
+const int bldim = 3;//3;
 const int eldim = 3;
-double beta_list[bldim] = {0.2, 1, 5};//{0.2, 1.0, 5.0};
+double beta_list[bldim] = {1, 2, 5}; //{1, 2, 5};//{0.2, 1.0, 5.0};
 double eta_list[eldim] = {0.5, 1, 5};//{0.2, 1.0, 5.0};
-double omega_DA_fix = 3; //fixed omega_DA, with scan tp
+double omega_DA_fix = 2; //fixed omega_DA, with scan tp
 
 double beta = 1;//0.2;//1;//5;
 double eta  = 1; //0.2;//1;//5;
@@ -27,18 +27,18 @@ double tp_fix = 5; //fixed t' for noneq FGR rate k(t',omega_DA) with scan omega_
 
 
 const double DeltaTau =0.002; //time slice for t' griding
-const double tp_max = 40; //scanning tp option, DeltaTau as step
+const double tp_max = 30; //scanning tp option, DeltaTau as step
 const double Deltatp = 0.2;
 
 double Omega = 0.5; //primary mode freq
 double y_0 = 1; //shift of primary mode
 
-const int n_omega = 100;
-const double omega_max = 10;//20;//2.5 for gaussian// 20 for ohmic
+const int n_omega = 500;
+const double omega_max = 15;//20;//2.5 for gaussian// 20 for ohmic
 const double d_omega = omega_max / n_omega;//0.1;//0.002;for gaussian//0.1; for ohmic
 const double d_omega_eff = omega_max / n_omega; //for effective SD sampling rate
 
-const int LEN = 512;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
+const int LEN = 1024;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
 const double DeltaT=0.2;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
 const double T0= -DeltaT*(LEN*0.5);//-DeltaT*LEN/2+DeltaT/2;
 
@@ -767,7 +767,7 @@ void Linear_NE_CD(double omega, double tp, double tau,  double shift, double req
 
 void Linear_NE_W0(double omega, double tp, double tau,  double shift, double req, double &re, double &im) {
     double Coth = 1.0 / tanh(beta*hbar*omega*0.5);
-    re = Coth*hbar*0.5/omega + 0.5*shift*shift*(1+cos(2*omega*tp)) - 0.25*pow(req*omega*tau*0.5, 2)*(1.0 + 1.0 / sinh(beta*hbar*omega*0.5)) ;
+    re = Coth*hbar*0.5/omega + 0.5*shift*shift*(1+cos(2*omega*tp)) - pow(req*omega*tau*0.5, 2)*Coth*Coth;
     im = - Coth * req * shift * omega * tau * cos(omega*tp);
     return;
 }
