@@ -61,6 +61,7 @@ void Integrand_W0(double omega, double t, double &re, double &im);
 void Integrand_Marcus(double omega, double t, double &re, double &im);
 void Linear_exact(double omega, double t, double req, double &re, double &im);
 void Linear_LSC(double omega, double t, double req, double &re, double &im);
+void Linear_LSC_PW(double omega, double t, double req, double &re, double &im);
 void Linear_CAV(double omega, double t, double req, double &re, double &im);
 void Linear_CD(double omega, double t, double req, double &re, double &im);
 void Linear_W0(double omega, double t, double req, double &re, double &im);
@@ -372,48 +373,42 @@ int main (int argc, char *argv[]) {
     outfile.close();
     outfile.clear();
         
-    /*
-    //[B] LSC approximation using S(omega) ohmic??
-    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0; //zero padding
+    //[Bb] LSC approximation using normal modes with product of Wigner (less accurate)
+    for (i = 0; i < nn; i++) corr1[i] = corr2[i] = 0;
     for (i = 0; i < LEN; i++) {
         t = T0 + DeltaT * i;
-        integ_re[0] =0;
-        integ_im[0] =0;
+        integ_re[0] = 0;
+        integ_im[0] = 0;
         linear_accum_re = 0;
         linear_accum_im = 0;
-        for (w = 1; w < n_omega; w++) {
-            omega = w * d_omega;
+        for (w = 0; w < n_omega; w++) {
+            Integrand_LSC(omega_nm[w], t, integ_re[w], integ_im[w]);
+            integ_re[w] *= S_array[w];
+            integ_im[w] *= S_array[w];
             
-            Integrand_LSC(omega, t, integ_re[w], integ_im[w]);
-            integ_re[w] *= SD[w];
-            integ_im[w] *= SD[w];
-            
-            Linear_LSC(omega, t, req_eff[w], linear_re, linear_im);
-            linear_accum_re += linear_re;
-            linear_accum_im += linear_im;
+            Linear_LSC_PW(omega_nm[w], t, req_nm[w], linear_re, linear_im);
+            linear_accum_re += linear_re * gamma_array[w] * gamma_array[w];
+            linear_accum_im += linear_im * gamma_array[w] * gamma_array[w];
         }
-        integral_re = Integrate(integ_re, n_omega, d_omega);
-        integral_im = Integrate(integ_im, n_omega, d_omega);
+        integral_re = Sum(integ_re, n_omega);
+        integral_im = Sum(integ_im, n_omega);
         temp_re = exp(-1 * integral_re) * cos(integral_im);
         temp_im = -1 * exp(-1 * integral_re) * sin(integral_im);
         corr1[i] = temp_re * linear_accum_re - temp_im * linear_accum_im;
-        corr2[i] = temp_re * linear_accum_im + temp_re * linear_accum_im;
+        corr2[i] = temp_re * linear_accum_im + temp_im * linear_accum_re;
     }
     
     FFT(-1, mm, corr1, corr2);//notice its inverse FT
-
-    for(i=0; i<nn; i++) { //shift time origin 
+    
+    for(i=0; i<nn; i++) { //shift time origin
         corr1_orig[i] = corr1[i] * cos(2*pi*i*shift/N) - corr2[i] * sin(-2*pi*i*shift/N);
         corr2_orig[i] = corr2[i] * cos(2*pi*i*shift/N) + corr1[i] * sin(-2*pi*i*shift/N);
     }
- 
     
-    outfile.open((emptystr + "LSC_EFGRL_" + nameapp + ".dat").c_str());
+    outfile.open((emptystr + "LSCPW_EFGRL_" + nameapp + ".dat").c_str());
     for (i=0; i<nn/2; i++) outfile << corr1_orig[i]*LEN*DeltaT*DAcoupling*DAcoupling << endl;
-    
     outfile.close();
     outfile.clear();
-     */
     
     
     //[C] C-AV approximation using normal modes
@@ -704,10 +699,20 @@ void Integrand_LSC(double omega, double t, double &re, double &im) {
 }
 
 void Linear_LSC(double omega, double t, double req, double &re, double &im) {
+    //accurate LSC: using Wigner of product
     double Coth = 1.0/tanh(beta*hbar*omega*0.5);
     re = 0.5*hbar/omega* Coth *cos(omega*t) - 0.25*req*req* sin(omega*t)*sin(omega*t)*Coth*Coth;
     im = -0.5*hbar/omega*sin(omega*t) + 0.25*req*req*Coth*(1-cos(omega*t))*sin(omega*t);
     //im = 0;
+    return;
+}
+
+void Linear_LSC_PW(double omega, double t, double req, double &re, double &im) {
+    //less accurate LSC: using product of Wigner
+    double Coth = 1.0/tanh(beta*hbar*omega*0.5);
+    re = 0.5*hbar/omega* Coth *cos(omega*t) - 0.25*req*req* sin(omega*t)*sin(omega*t)*Coth*Coth;
+    //im = -0.5*hbar/omega*sin(omega*t) + 0.25*req*req*Coth*(1-cos(omega*t))*sin(omega*t);
+    im = 0;
     return;
 }
 
