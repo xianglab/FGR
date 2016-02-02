@@ -1,7 +1,7 @@
 /* This code calculates Non-equilibrium Fermi Golden Rule rate 
    in non-Condon case using Brownian oscillator model
-   compare with linearized semiclassical methods  
-   To compile: g++ -o NEFGRL NEFGRL.cpp -llapack -lrefblas -lgfortran
+   compare with linearized semiclassical methods -- using LVC model
+   To compile: g++ -o NEFGRL NEFGRL.cpp
    (c) Xiang Sun 2015
  */
 
@@ -13,37 +13,195 @@
 #include <cmath>
 using namespace std;
 
-const int bldim = 3;//3;
-const int eldim = 3;
-double beta_list[bldim] = {1, 2, 5}; //{1, 2, 5};//{0.2, 1.0, 5.0};
-double eta_list[eldim] = {0.5, 1, 2};//{0.5, 1, 5};//{0.2, 1.0, 5.0};
-double omega_DA_fix = 0; //fixed omega_DA, with scan tp
-double s = 5; //Noneq. initial shift of parimary mode
-const int n_omega = 500;
-const double omega_max = 15;//20;//2.5 for gaussian// 20 for ohmic
-const double tp_max = 40; //scanning tp option, DeltaTau as step
-const double Deltatp = 0.2;
+double temperature = 300; //K
+const double tp_max_fs = 50; //fs
+const double Deltatp_fs = 0.25; //0.25 time step of tp (fs)
+const int DTauPerDtp = 5;//100; //# of DeltaTau per Deltatp
+const double s = -1; //Noneq. initial shift
 
-double beta = 1;//0.2;//1;//5;
-double eta  = 1; //0.2;//1;//5;
-const double DAcoupling = 0.1;
-double tp_fix = 5; //fixed t' for noneq FGR rate k(t',omega_DA) with scan omega_DA
-const double DeltaTau =0.002; //time slice for t' griding
-double Omega = 0.5; //primary mode freq
-double y_0 = 1; //shift of primary mode
-const double d_omega = omega_max / n_omega;//0.1;//0.002;for gaussian//0.1; for ohmic
-const double d_omega_eff = omega_max / n_omega; //for effective SD sampling rate
+//Fulvene molecule LVC Hamiltonian (a.u.)
+const int n_omega = 30; //number of normal modes
+double Delta_11 = 0; //donor
+double Delta_22 = 1.8764e-1; //acceptor
+double omega_array[n_omega] = {
+    0.00098662,
+    0.0017237,
+    0.002419,
+    0.0028634,
+    0.0033546,
+    0.0034833,
+    0.0036851,
+    0.0038835,
+    0.0043459,
+    0.0041842,
+    0.0043828,
+    0.0044617,
+    0.0046002,
+    0.0051482,
+    0.005131,
+    0.0057261,
+    0.0057567,
+    0.0067668,
+    0.007755,
+    0.0072129,
+    0.0076025,
+    0.007927,
+    0.0082881,
+    0.0085797,
+    0.016669,
+    0.017018,
+    0.017046,
+    0.017134,
+    0.017176,
+    0.017397
+};
+double d2_array[n_omega] = {
+    0,
+    -4.017e-10,
+    0,
+    0,
+    0.000376,
+    0,
+    0,
+    0,
+    1.9402e-08,
+    0,
+    0,
+    0,
+    0.00048475,
+    2.8393e-09,
+    0.00046551,
+    1.4564e-07,
+    -0.00056739,
+    -5.3006e-08,
+    9.9417e-09,
+    0.00061246,
+    0.0004844,
+    -0.0016541,
+    6.3709e-08,
+    0.0024292,
+    -0.00047442,
+    -6.1685e-08,
+    9.7464e-05,
+    -9.6004e-08,
+    -8.4104e-05,
+    1.5356e-08
+};
 
-const int LEN = 1024;//512;//1024; //number of t choices 1024 for gaussian//512 for ohmic
-const double DeltaT=0.2;//0.2;//0.3; for gaussian//0.2 for ohmic //FFT time sampling interval
-const double T0= -DeltaT*(LEN*0.5);//-DeltaT*LEN/2+DeltaT/2;
+double c_array[n_omega] = {
+    0,
+    -9.2519e-06,
+    0,
+    0,
+    -2.0893e-10,
+    0,
+    0,
+    0,
+    0.00043069,
+    0,
+    0,
+    0,
+    -1.0211e-08,
+    0.00037411,
+    -2.1549e-09,
+    4.573e-05,
+    9.7768e-09,
+    0.00051583,
+    0.0009486,
+    3.1798e-08,
+    1.2354e-08,
+    -2.0903e-09,
+    -0.00035004,
+    -3.9514e-09,
+    2.0579e-10,
+    7.0815e-06,
+    -3.3803e-09,
+    -5.233e-05,
+    1.0461e-08,
+    3.0324e-06
+};
 
+/*
+double d2_mctdh[n_omega] = {
+    0,
+    -9.67550e-09,
+    0,
+    0,
+    0.006491800,
+    0,
+    0,
+    0,
+    2.94310e-07,
+    0,
+    0,
+    0,
+    0.0071471,
+    3.957200e-08,
+    0.00649880,
+    1.92460e-06,
+    -0.00747810,
+    -6.443700e-07,
+    1.128900e-07,
+    0.0072115,
+    0.0055555,
+    -0.018578,
+    6.997900e-07,
+    0.0262260,
+    -0.0036746,
+    -4.72850e-07,
+    0.000746500,
+    -7.334300e-07,
+    -0.00064173,
+    1.16430e-07
+};
+double c_mctdh[n_omega] = {
+    0,
+    -0.00022284,
+    0,
+    0,
+    -3.60720e-09,
+    0,
+    0,
+    0,
+    0.0065332,
+    0,
+    0,
+    0,
+    -1.50550e-07,
+    0.0052140,
+    -3.008300e-08,
+    0.000604330,
+    1.288600e-07,
+    0.0062708,
+    0.0107720,
+    3.744100e-07,
+    1.416900e-07,
+    -2.34770e-08,
+    -0.0038450,
+    -4.26600e-08,
+    1.593900e-09,
+    5.428500e-05,
+    -2.58900e-08,
+    -0.00039978,
+    7.981800e-08,
+    2.299100e-05
+};
+ */
+
+const double fs2au = 41.341105; //1 fs = 41.34 a.u.
+const double kT2au = 3.168429139e-6;// kT(1 Kelvin) = 3.2e-6 a.u.
+
+double beta = 1.0 / (temperature * kT2au); //in a.u.
+double tp_max = tp_max_fs * fs2au; //a.u.
+double Deltatp = Deltatp_fs * fs2au; //a.u. time step of tp
+double DeltaTau = Deltatp / DTauPerDtp;//50; //a.u. time step of tau (inner loop)
+
+
+const double DAcoupling = 1;
 const double pi=3.14159265358979324;
 const double RT_2PI= sqrt(2*pi);
 const double hbar = 1;
-//for gaussian spectral density
-const double sigma = 0.1;
-const double omega_op = 1.0;
+
 
 void FFT(int dir, int m, double *x, double *y); //Fast Fourier Transform, 2^m data
 double** Create_matrix(int row, int col);//new continuous 2D array in heap
@@ -68,12 +226,6 @@ double Integrate(double *data, int n, double dx);
 double Sum(double *data, int n);
 
 
-extern "C" {
-    void dsyev_(const char &JOBZ, const char &UPLO, const int &N, double *A,
-                const int &LDA, double *W, double *WORK, const int &LWORK,
-                int &INFO);
-}
-
 
 int main (int argc, char *argv[]) {
     
@@ -83,20 +235,6 @@ int main (int argc, char *argv[]) {
     string idstr("");
     string nameapp;
 
-    int mm(0), nn(1); // nn = 2^mm is number of (complex) data to FFT
-	
-	while (nn < LEN ) {
-		mm++;
-		nn *= 2;
-	} //nn is the first 2^m that larger LEN
-	
-	double *corr1 = new double [nn];
-	double *corr2 = new double [nn];
-    
-    double *corr1_orig = new double [nn]; //shifted origin to T0
-    double *corr2_orig = new double [nn];
-    
-    double t;
     int i, j, a, b;
     double omega;
     int w; //count of omega
@@ -108,16 +246,11 @@ int main (int argc, char *argv[]) {
     
     double integral_re, integral_im;
     integral_re = integral_im = 0;
-    
-    double Er=0;
-    double SD[n_omega];
-    double J_eff[n_omega];
+
     
     int M; //time slice for tau = 0 --> tp
     int m; //index of tau
-    double shift = T0 / DeltaT;
-    double N = nn;
-    //cout << "shift = " << shift << endl;
+    
     double linear_accum_re;
     double linear_accum_im;
     double linear_re;
@@ -126,138 +259,89 @@ int main (int argc, char *argv[]) {
     double temp_im;
     double C_re;
     double C_im;
-    double req_eff[n_omega];//req of effective SD
     
-    //Dimension of matrix (Check this every time)
-    int dim = n_omega;
-    //-------- initiate LAPACK -----------
-    int col = dim, row = dim;
-    //Allocate memory for the eigenvlues
-    double *eig_val = new double [row];
-    //Allocate memory for the matrix
-    double **matrix = new double* [col];
-    matrix[0] = new double [col*row];
-    for (int i = 1; i < col; ++i)
-        matrix[i] = matrix[i-1] + row;
-    //Parameters for dsyev_ in LAPACK
-    int lwork = 6*col, info;
-    double *work = new double [lwork];
-    //-------------------------------------
-    
-    double **TT_ns;
-    TT_ns = Create_matrix(n_omega, n_omega);
-    //transformation matrix: [normal mode]=[[TT_ns]]*[system-bath]
-    //TT_ns * D_matrix * T_sn = diag, eigenvectors are row-vector of TT_ns
     double omega_nm[n_omega]; //normal mode frequencies
-    double req_nm[n_omega]; //req of normal modes (acceptor shift)
-    double c_nm[n_omega];//coupling strength of normal modes
-    double S_array[n_omega];//Huang-Rhys factor for normal modes
-    //double D_matrix[n_omega][n_omega];// the Hessian matrix
-    double **D_matrix;
-    D_matrix = Create_matrix(n_omega, n_omega);
-    //double Diag_matrix[n_omega][n_omega]; //for testing diagonalization
+    double req_nm[n_omega] = {
+        -0,
+        0.0001352,
+        -0,
+        -0,
+        -33.413,
+        -0,
+        -0,
+        -0,
+        -0.0010273,
+        -0,
+        -0,
+        -0,
+        -22.907,
+        -0.00010713,
+        -17.682,
+        -0.0044417,
+        17.121,
+        0.0011576,
+        -0.00016531,
+        -11.772,
+        -8.3809,
+        26.323,
+        -0.00092745,
+        -33,
+        1.7074,
+        0.000213,
+        -0.33541,
+        0.00032702,
+        0.28509,
+        -5.0739e-05
+    }; //req of normal modes (acceptor shift)
     double gamma_nm[n_omega]; //linear coupling coefficient
     double shift_NE[n_omega]; //the s_j shifting for initial sampling
     
     double tp; //t' for noneq preparation
-    tp = tp_fix;
-    M = static_cast<int> (tp_fix/DeltaTau);
     double tau;
-    double d_omega_DA = 2 * pi / LEN / DeltaT; //omega_DA griding size
-    double omega_DA;
+    
     double kre, kim;
     double sum(0);
     double kneq(0);
     
-    int beta_index(0);
-    int eta_index(0);
-                  
-    cout << "---- BEGIN of NEFGRL in non-Condon case ----" << endl;
+    cout << "---- BEGIN of NEFGRL in non-Condon case for Fulvene ----" << endl;
     
-    //BEGIN loop through thermal conditions
-    int case_count(0);
-    for (beta_index = 0; beta_index < bldim; beta_index++)
-        for (eta_index = 0; eta_index < eldim; eta_index++)
-    {
-        beta = beta_list[beta_index];
-        eta = eta_list[eta_index];
+    double dE12 = -0.98911; //Delta22 - 0.5* sum d^2/w^2
+    double omega_DA = -dE12; //fixed omega_DA, with scan tp
+    
+    omega_DA = Delta_22;
+    for (i=0; i<n_omega ;i++) {
+        omega_DA -= d2_array[i] * d2_array[i] / (2 * omega_array[i] * omega_array[i]);
+    }
+    cout << "omega_DA (a.u.) = " << omega_DA << endl;
+    
+    
     ss.str("");
     nameapp = "";
-    ss << "b" << beta;
-    ss << "e" << eta << "_";
+    ss << "Fulvene_"<< temperature << "K";
     nameapp = ss.str();
 
-    
-    //setting up spectral density for bath modes
-    for (w = 0; w < n_omega; w++) J_eff[w] = J_omega_ohmic_eff(w*d_omega_eff, eta);
-    for (w = 0; w < n_omega; w++) SD[w] = S_omega_ohmic(w*d_omega, eta); //Ohmic spectral density
-    //for (w = 0; w < n_omega; w++) SD[w] = S_omega_drude(w*d_omega, eta); //Drude spectral density
-    //for (w = 0; w < n_omega; w++) SD[w] = S_omega_gaussian(w*d_omega, eta, sigma, omega_op);
-    
-    for (w = 1; w < n_omega; w++) req_eff[w] = sqrt(8 * hbar * J_eff[w] / (pi * w * d_omega_eff*w * d_omega_eff*w));//eq min for each eff normal mode
-    
-    double c_bath[n_omega]; //secondary bath mode min shift coefficients
-    for (w = 1; w < n_omega; w++) {
-        c_bath[w] = sqrt( 2 / pi * J_omega_ohmic(w*d_omega, eta) * d_omega * d_omega * w);
-    }
-    
-    // ********** BEGIN of Normal mode analysis ***********
-    //construct Hessian matrix
-    for (i=0; i< n_omega; i++) for (j=0; j<n_omega ;j++) D_matrix[i][j] = 0;
-    D_matrix[0][0] = Omega*Omega;
-    for (w =1 ; w < n_omega ; w++) {
-        D_matrix[0][0] += pow(c_bath[w]/(w*d_omega) ,2);
-        D_matrix[0][w] = D_matrix[w][0] = c_bath[w];
-        D_matrix[w][w] = pow(w*d_omega ,2);
-    }
-    //copy Hessian matrix to working matrix for diagonalization
-    for (i = 0; i < dim; i++) {
-        for (j = 0; j < dim; j++) {
-            matrix[j][i] = D_matrix[i][j];
-            //NOTE: switch i j to match with Fortran array memory index
-        }
-    }
-    
-    //diagonalize matrix, the eigenvectors transpose is in result matrix => TT_ns.
-    dsyev_('V', 'L', col, matrix[0], col, eig_val, work, lwork, info); //diagonalize matrix
-    if (info != 0) cout << "Lapack failed. " << endl;
-    
-    for (i=0; i < dim; i++) omega_nm[i] = sqrt(eig_val[i]);
-    
-    for (i=0; i < dim; i++)
-        for (j=0; j < dim; j++) TT_ns[i][j] = matrix[i][j];
-    
-    // the coefficients of linear electronic coupling in normal modes (gamma[j]=TT_ns[j][0]*gamma_y), here gamma_y=1
-    
-    //Noneq initial shift of each mode
-    for (i=0; i<n_omega; i++) gamma_nm[i] = TT_ns[i][0];
-    for (i=0; i<n_omega; i++) shift_NE[i] = s * gamma_nm[i];
-    
+    for (i=0; i<n_omega; i++) omega_nm[i] = omega_array[i];
+    //prepare modes: for noneq initial shift and coupling
     //req of normal modes (acceptor's potential energy min shift)
-    for (i=0; i<n_omega; i++) {
-        req_nm[i] = 1 * TT_ns[i][0];
-        for (a=1; a < n_omega; a++) req_nm[i] -= TT_ns[i][a] * c_bath[a] / (a*d_omega * a*d_omega);
-    }
     
     for (i=0; i<n_omega; i++) {
-        //tilde c_j coupling strength normal mode
-        c_nm[i] = req_nm[i] * omega_nm[i] * omega_nm[i];
-        req_nm[i] *= 2 * y_0;
-        //discrete Huang-Rhys factor
-        S_array[i] = omega_nm[i] * req_nm[i] * req_nm[i] * 0.5;
+        req_nm[i] = - d2_array[i] / (omega_array[i]*omega_array[i]);
     }
-    outfile.close();
-    outfile.clear();
-    // ******** END of Normal mode analysis **************
+    
+    for (i=0; i<n_omega; i++) gamma_nm[i] = c_array[i];
+    
+    for (i=0; i<n_omega; i++) shift_NE[i] = s * req_nm[i]; //initial shift (from bottom of A)
 
-    //we fix omega_DA, and scan tp = 0 - tp_max
-    omega_DA = omega_DA_fix;
-    
+    double Er=0;
+    for (i = 0; i < n_omega; i++) Er += 0.5 * omega_nm[i] * omega_nm[i] * req_nm[i] * req_nm[i];
+    cout << "Er = " << Er << endl;
+    /*
     ss.str("");
     idstr = "";
     ss << "s" << s;
     ss << "w" << omega_DA ;
     idstr += ss.str();
+    */
     
     
     //case [1]: exact for Noneq FGR in non-Condon case (linear coupling) using normal modes
@@ -300,6 +384,7 @@ int main (int argc, char *argv[]) {
     outfile.clear();
     outfile1.close();
     outfile1.clear();
+    
     
     //case [2]: LSC for Noneq FGR in non-Condon case (linear coupling) using normal modes
     outfile.open((emptystr+"LSC_k_NEFGRL_"+nameapp+idstr+".dat").c_str());
@@ -506,29 +591,23 @@ int main (int argc, char *argv[]) {
     outfile.clear();
     outfile1.close();
     outfile1.clear();
+   
     
-    
-    case_count++;
+
 
     //-------------- Summary ----------------
-    
-    cout << "CASE # " << case_count <<  " done:" << endl;
-    cout << "   beta = " << beta << endl;
-    cout << "    eta = " << eta << endl;
-    cout << "-------------------" << endl;
-    
-    
-    }
-    
-    
-    
-    cout << "--- SUMMARY --- " << endl;
-    cout << "   fix omega_DA = " << omega_DA_fix << endl;
-    cout << "   Delta tp = " << Deltatp << endl;
-    cout << "   number of tp = " << tp_max/Deltatp << endl << endl;
+
+    cout << "---- SUMMARY ---- " << endl;
+    cout << "   Er = " << Er << endl;
+    cout << "   Temperature(K) = " << temperature << endl;
+    cout << "   beta (a.u.) = " << beta << endl;
+    cout << "   fix omega_DA (a.u.) = " << omega_DA << endl;
+    cout << "   Delta tp (fs) = " << Deltatp_fs << endl;
+    cout << "   # of DeltaTau per Deltatp = " << DTauPerDtp << endl;
+    cout << "   Total number of tp = " << tp_max_fs/Deltatp_fs <<  endl;
     cout << "   normal modes n_omega = " << n_omega << endl;
     cout << "   initial shift s = " << s << endl;
-    cout << "---- END of all NEFGRL in non-Condon case ----" << endl;
+    cout << "---- END of NEFGRL in non-Condon case ----" << endl;
     return 0;
 }
 
@@ -663,31 +742,6 @@ double** Create_matrix(int row, int col) {
 }
 
 
-//spectral densities
-
-double S_omega_ohmic(double omega, double eta) {
-    return eta * omega * exp(-1 * omega);
-}
-
-double S_omega_drude(double omega, double eta) {
-    return eta * omega /(1 + omega*omega);
-}
-
-double S_omega_gaussian(double omega, double eta, double sigma, double omega_op) {
-    return   0.5 / hbar * eta * omega * exp(-(omega - omega_op)*(omega - omega_op)/(2*sigma*sigma))/RT_2PI/sigma;
-}
-
-double J_omega_ohmic(double omega, double eta) {
-    //notice definition J(omega) is different from S(omega)
-    //J_omega = pi/2 * sum_a c_a^2 / omega_a delta(omega - omega_a)
-    return eta * omega * exp(-1 * omega);
-}
-
-double J_omega_ohmic_eff(double omega, double eta) {
-    //(normal mode) effective SD for Ohmic bath DOF
-    //J_omega = pi/2 * sum_a c_a^2 / omega_a delta(omega - omega_a)
-    return eta * omega * pow(Omega,4) / ( pow(Omega*Omega - omega*omega, 2) + eta*eta*omega*omega);
-}
 
 //min-to-min energy as Fourier transform frequency
 void Integrand_LSC(double omega, double t, double &re, double &im) {
@@ -696,11 +750,20 @@ void Integrand_LSC(double omega, double t, double &re, double &im) {
     return;
 }
 
+
 void Integrand_NE_exact(double omega, double tp, double tau, double shift, double req, double &re, double &im) {//including Huang-Rhys factor S_j
     re = omega*req*req*0.5*(1-cos(omega*tau))/tanh(beta*hbar*omega/2);
     im = omega*req*req*0.5*sin(omega*tau) + omega*req*shift* (sin(omega*tp) + sin(omega*tau - omega*tp));
     return;
 }
+
+/*
+void Integrand_NE_exact(double omega, double tp, double tau, double shift, double req, double &re, double &im) {//including Huang-Rhys factor S_j
+    re = omega*req*req*0.5*(-1-cos(omega*tau))/tanh(beta*hbar*omega/2); //WRONG one: "-1"
+    im = omega*req*req*0.5*sin(omega*tau) + omega*req*shift* (sin(omega*tp) + sin(omega*tau - omega*tp));
+    return;
+}
+ */
 
 
 void Integrand_NE_CAV(double omega, double tp, double tau, double shift, double req, double &re, double &im) {
